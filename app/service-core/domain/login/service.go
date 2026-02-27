@@ -53,12 +53,10 @@ type authService interface {
 type emailService interface {
 	SendEmail(
 		ctx context.Context,
-		userID uuid.UUID,
 		emailTo string,
 		emailSubject string,
 		emailBody string,
-		attachmentIDs []uuid.UUID,
-	) (*query.Email, error)
+	) error
 }
 
 type Service struct {
@@ -349,7 +347,7 @@ func (s *Service) Login(
     </table>
 </body>
 </html>`
-		_, err = s.emailService.SendEmail(ctx, uuid.Nil, userEmail, subject, body, nil)
+		err = s.emailService.SendEmail(ctx, userEmail, subject, body)
 		if err != nil {
 			return nil, pkg.UnauthorizedError{Err: fmt.Errorf("error sending email: %w", err)}
 		}

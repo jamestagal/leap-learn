@@ -38,17 +38,6 @@ func Run(apiHandler *Handler) *http.Server {
 	mux.HandleFunc("/api/v1/billing/sync-session", apiHandler.handleBillingSyncSession)
 	mux.HandleFunc("/api/v1/billing/webhook", apiHandler.handleBillingWebhook)
 
-	// Emails
-	mux.HandleFunc("/api/v1/emails", apiHandler.handleEmails)
-
-	// Files
-	mux.HandleFunc("/api/v1/files", apiHandler.handleFilesCollection)
-	mux.HandleFunc("/api/v1/files/{id}", apiHandler.handleFileResource)
-
-	// Notes
-	mux.HandleFunc("/api/v1/notes", apiHandler.handleNotesCollection)
-	mux.HandleFunc("/api/v1/notes/{id}", apiHandler.handleNoteResource)
-
 	// Cron jobs
 	mux.HandleFunc("/tasks/delete-tokens", apiHandler.handleTasksDeleteTokens)
 

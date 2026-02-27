@@ -141,7 +141,8 @@
       "Bash(go get:*)",
       "Bash(git check-ignore:*)",
       "Bash(go list:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(docker:*)"
     ]
   }
 }

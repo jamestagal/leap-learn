@@ -1,13 +1,20 @@
 package file
 
 import (
+	"context"
 	"service-core/config"
 )
 
 type File struct {
-	Key          string
+	Key         string
 	ContentType string
 	Data        []byte
+}
+
+type provider interface {
+	Upload(ctx context.Context, file *File) error
+	Download(ctx context.Context, fileKey string) ([]byte, error)
+	Remove(ctx context.Context, fileKey string) error
 }
 
 //nolint:ireturn

@@ -15,6 +15,7 @@ import {
 	jsonb,
 	boolean,
 	bigint,
+	numeric,
 	unique,
 	index,
 } from "drizzle-orm/pg-core";
@@ -481,6 +482,351 @@ export const fieldOptionSets = pgTable(
 );
 
 // =============================================================================
+// H5P LIBRARY TABLES (Platform-wide)
+// =============================================================================
+
+// H5P Libraries — platform-wide registry (no org_id — libraries are shared)
+export const h5pLibraries = pgTable(
+	"h5p_libraries",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		// Identity (composite unique)
+		machineName: varchar("machine_name", { length: 255 }).notNull(),
+		majorVersion: integer("major_version").notNull(),
+		minorVersion: integer("minor_version").notNull(),
+		patchVersion: integer("patch_version").notNull(),
+		title: text("title").notNull().default(""),
+
+		// Provenance
+		origin: varchar("origin", { length: 20 }).notNull().default("official"),
+
+		// Full library.json stored as JSONB
+		metadataJson: jsonb("metadata_json"),
+
+		// Discovery / filtering
+		categories: text("categories").array(),
+		keywords: text("keywords").array(),
+		screenshots: text("screenshots").array(),
+		description: text("description").notNull().default(""),
+		iconPath: text("icon_path"),
+
+		// R2 storage paths
+		packagePath: text("package_path"),
+		extractedPath: text("extracted_path"),
+
+		// Flags
+		runnable: boolean("runnable").notNull().default(false),
+		restricted: boolean("restricted").notNull().default(false),
+	},
+	(table) => ({
+		uniqueVersion: unique().on(table.machineName, table.majorVersion, table.minorVersion, table.patchVersion),
+		machineNameIdx: index("h5p_libraries_machine_name_idx").on(table.machineName),
+	}),
+);
+
+// H5P Library Dependencies — normalised dependency graph
+export const h5pLibraryDependencies = pgTable(
+	"h5p_library_dependencies",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		libraryId: uuid("library_id")
+			.notNull()
+			.references(() => h5pLibraries.id, { onDelete: "cascade" }),
+		dependsOnId: uuid("depends_on_id")
+			.notNull()
+			.references(() => h5pLibraries.id, { onDelete: "cascade" }),
+		dependencyType: varchar("dependency_type", { length: 20 }).notNull(),
+	},
+	(table) => ({
+		uniqueDep: unique().on(table.libraryId, table.dependsOnId, table.dependencyType),
+		libraryIdx: index("h5p_lib_deps_library_idx").on(table.libraryId),
+		dependsOnIdx: index("h5p_lib_deps_depends_on_idx").on(table.dependsOnId),
+	}),
+);
+
+// H5P Org Libraries — per-org library enablement / restriction
+export const h5pOrgLibraries = pgTable(
+	"h5p_org_libraries",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		libraryId: uuid("library_id")
+			.notNull()
+			.references(() => h5pLibraries.id, { onDelete: "cascade" }),
+		enabled: boolean("enabled").notNull().default(true),
+		restricted: boolean("restricted").notNull().default(false),
+	},
+	(table) => ({
+		uniqueOrgLibrary: unique().on(table.orgId, table.libraryId),
+		orgIdx: index("h5p_org_libs_org_idx").on(table.orgId),
+		libraryIdx: index("h5p_org_libs_library_idx").on(table.libraryId),
+	}),
+);
+
+// =============================================================================
+// H5P CONTENT TABLES (Organisation-scoped)
+// =============================================================================
+
+// H5P Content — organisation-scoped content items
+export const h5pContent = pgTable(
+	"h5p_content",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		libraryId: uuid("library_id")
+			.notNull()
+			.references(() => h5pLibraries.id),
+		createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+
+		// Identity
+		title: text("title").notNull(),
+		slug: text("slug").notNull(),
+		description: text("description").notNull().default(""),
+
+		// Content payload (retrieve by ID only — never query into)
+		contentJson: jsonb("content_json").notNull().default({}),
+
+		// Discovery
+		tags: text("tags").array(),
+
+		// Virtual folder path (denormalised for fast listing)
+		folderPath: text("folder_path"),
+
+		// R2 storage location
+		storagePath: text("storage_path"),
+
+		// Status
+		status: varchar("status", { length: 20 }).notNull().default("draft"),
+		deletedAt: timestamp("deleted_at", { withTimezone: true }),
+	},
+	(table) => ({
+		uniqueOrgSlug: unique().on(table.orgId, table.slug),
+		orgIdx: index("h5p_content_org_idx").on(table.orgId),
+		libraryIdx: index("h5p_content_library_idx").on(table.libraryId),
+		statusIdx: index("h5p_content_status_idx").on(table.orgId, table.status),
+		folderIdx: index("h5p_content_folder_idx").on(table.orgId, table.folderPath),
+	}),
+);
+
+// H5P Content Folders — virtual folder tree for organising content
+export const h5pContentFolders = pgTable(
+	"h5p_content_folders",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		parentId: uuid("parent_id"),
+		name: text("name").notNull(),
+	},
+	(table) => ({
+		uniqueOrgParentName: unique().on(table.orgId, table.parentId, table.name),
+		orgIdx: index("h5p_folders_org_idx").on(table.orgId),
+		parentIdx: index("h5p_folders_parent_idx").on(table.parentId),
+	}),
+);
+
+// =============================================================================
+// H5P HUB TABLES
+// =============================================================================
+
+// H5P Hub Registrations — per-org Hub API key
+export const h5pHubRegistrations = pgTable("h5p_hub_registrations", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+	updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+	orgId: uuid("org_id")
+		.notNull()
+		.unique()
+		.references(() => organisations.id, { onDelete: "cascade" }),
+
+	siteKey: text("site_key").notNull().default(""),
+	siteSecret: text("site_secret").notNull().default(""),
+	hubUrl: text("hub_url").notNull().default("https://api.h5p.org"),
+});
+
+// H5P Hub Cache — cached Hub content-type responses (TTL-based)
+export const h5pHubCache = pgTable("h5p_hub_cache", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+	cacheKey: text("cache_key").notNull().unique(),
+	data: jsonb("data").notNull().default({}),
+	expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+// =============================================================================
+// COURSE TABLES
+// =============================================================================
+
+// Courses — org-scoped containers of learning content
+export const courses = pgTable(
+	"courses",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+
+		title: text("title").notNull(),
+		slug: text("slug").notNull(),
+		description: text("description").notNull().default(""),
+		coverImage: text("cover_image"),
+
+		status: varchar("status", { length: 20 }).notNull().default("draft"),
+		deletedAt: timestamp("deleted_at", { withTimezone: true }),
+	},
+	(table) => ({
+		uniqueOrgSlug: unique().on(table.orgId, table.slug),
+		orgIdx: index("courses_org_idx").on(table.orgId),
+		statusIdx: index("courses_status_idx").on(table.orgId, table.status),
+	}),
+);
+
+// Course Items — ordered items within a course
+export const courseItems = pgTable(
+	"course_items",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		courseId: uuid("course_id")
+			.notNull()
+			.references(() => courses.id, { onDelete: "cascade" }),
+		contentId: uuid("content_id").references(() => h5pContent.id, { onDelete: "set null" }),
+
+		sortOrder: integer("sort_order").notNull().default(0),
+		title: text("title").notNull().default(""),
+		itemType: varchar("item_type", { length: 20 }).notNull().default("h5p"),
+	},
+	(table) => ({
+		courseIdx: index("course_items_course_idx").on(table.courseId),
+		contentIdx: index("course_items_content_idx").on(table.contentId),
+		sortIdx: index("course_items_sort_idx").on(table.courseId, table.sortOrder),
+	}),
+);
+
+// =============================================================================
+// ANALYTICS TABLES
+// =============================================================================
+
+// Enrolments — learner enrolments in courses
+export const enrolments = pgTable(
+	"enrolments",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		courseId: uuid("course_id")
+			.notNull()
+			.references(() => courses.id, { onDelete: "cascade" }),
+		userId: uuid("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+
+		status: varchar("status", { length: 20 }).notNull().default("active"),
+		enrolledAt: timestamp("enrolled_at", { withTimezone: true }).notNull().defaultNow(),
+		completedAt: timestamp("completed_at", { withTimezone: true }),
+	},
+	(table) => ({
+		uniqueCourseUser: unique().on(table.courseId, table.userId),
+		orgIdx: index("enrolments_org_idx").on(table.orgId),
+		courseIdx: index("enrolments_course_idx").on(table.courseId),
+		userIdx: index("enrolments_user_idx").on(table.userId),
+		statusIdx: index("enrolments_status_idx").on(table.orgId, table.status),
+	}),
+);
+
+// Progress Records — per-content progress tracking
+export const progressRecords = pgTable(
+	"progress_records",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		enrolmentId: uuid("enrolment_id")
+			.notNull()
+			.references(() => enrolments.id, { onDelete: "cascade" }),
+		contentId: uuid("content_id")
+			.notNull()
+			.references(() => h5pContent.id, { onDelete: "cascade" }),
+		userId: uuid("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+
+		score: numeric("score", { precision: 5, scale: 2 }),
+		maxScore: numeric("max_score", { precision: 5, scale: 2 }),
+		completion: numeric("completion", { precision: 5, scale: 4 }).notNull().default("0"),
+		completed: boolean("completed").notNull().default(false),
+		attempts: integer("attempts").notNull().default(0),
+		timeSpent: integer("time_spent").notNull().default(0), // seconds
+	},
+	(table) => ({
+		uniqueEnrolmentContent: unique().on(table.enrolmentId, table.contentId),
+		orgIdx: index("progress_org_idx").on(table.orgId),
+		enrolmentIdx: index("progress_enrolment_idx").on(table.enrolmentId),
+		contentIdx: index("progress_content_idx").on(table.contentId),
+		userIdx: index("progress_user_idx").on(table.userId),
+	}),
+);
+
+// xAPI Statements — append-only log
+// Future: consider time-based partitioning for large deployments
+export const xapiStatements = pgTable(
+	"xapi_statements",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+		orgId: uuid("org_id")
+			.notNull()
+			.references(() => organisations.id, { onDelete: "cascade" }),
+		userId: uuid("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		contentId: uuid("content_id").references(() => h5pContent.id, { onDelete: "set null" }),
+
+		verb: varchar("verb", { length: 255 }).notNull(),
+		statement: jsonb("statement").notNull(),
+	},
+	(table) => ({
+		orgIdx: index("xapi_org_idx").on(table.orgId),
+		userIdx: index("xapi_user_idx").on(table.userId),
+		contentIdx: index("xapi_content_idx").on(table.contentId),
+		orgCreatedIdx: index("xapi_org_created_idx").on(table.orgId, table.createdAt),
+		verbIdx: index("xapi_verb_idx").on(table.verb),
+	}),
+);
+
+// =============================================================================
 // TYPE DEFINITIONS
 // =============================================================================
 
@@ -552,3 +898,43 @@ export type FormOptionCategory =
 	| "budget_range"
 	| "timeline"
 	| "design_styles";
+
+// H5P Library types
+export type H5pLibrary = typeof h5pLibraries.$inferSelect;
+export type H5pLibraryInsert = typeof h5pLibraries.$inferInsert;
+export type H5pLibraryDependency = typeof h5pLibraryDependencies.$inferSelect;
+export type H5pLibraryDependencyInsert = typeof h5pLibraryDependencies.$inferInsert;
+export type H5pOrgLibrary = typeof h5pOrgLibraries.$inferSelect;
+export type H5pOrgLibraryInsert = typeof h5pOrgLibraries.$inferInsert;
+export type H5pLibraryOrigin = "official" | "custom";
+export type H5pDependencyType = "preloaded" | "dynamic" | "editor";
+
+// H5P Content types
+export type H5pContent = typeof h5pContent.$inferSelect;
+export type H5pContentInsert = typeof h5pContent.$inferInsert;
+export type H5pContentFolder = typeof h5pContentFolders.$inferSelect;
+export type H5pContentFolderInsert = typeof h5pContentFolders.$inferInsert;
+export type H5pContentStatus = "draft" | "published" | "archived";
+
+// H5P Hub types
+export type H5pHubRegistration = typeof h5pHubRegistrations.$inferSelect;
+export type H5pHubRegistrationInsert = typeof h5pHubRegistrations.$inferInsert;
+export type H5pHubCacheEntry = typeof h5pHubCache.$inferSelect;
+export type H5pHubCacheEntryInsert = typeof h5pHubCache.$inferInsert;
+
+// Course types
+export type Course = typeof courses.$inferSelect;
+export type CourseInsert = typeof courses.$inferInsert;
+export type CourseItem = typeof courseItems.$inferSelect;
+export type CourseItemInsert = typeof courseItems.$inferInsert;
+export type CourseStatus = "draft" | "published" | "archived";
+export type CourseItemType = "h5p" | "text" | "video" | "link";
+
+// Analytics types
+export type Enrolment = typeof enrolments.$inferSelect;
+export type EnrolmentInsert = typeof enrolments.$inferInsert;
+export type ProgressRecord = typeof progressRecords.$inferSelect;
+export type ProgressRecordInsert = typeof progressRecords.$inferInsert;
+export type XapiStatement = typeof xapiStatements.$inferSelect;
+export type XapiStatementInsert = typeof xapiStatements.$inferInsert;
+export type EnrolmentStatus = "active" | "completed" | "withdrawn";

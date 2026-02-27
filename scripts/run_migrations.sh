@@ -30,11 +30,11 @@ if [ "$1" = "production" ] || [ "$1" = "prod" ]; then
 
     echo ""
     echo "Copying migrations to VPS..."
-    ssh "$VPS_USER@$VPS_HOST" 'mkdir -p /tmp/webkit_migrations'
-    scp -r "$MIGRATIONS_DIR"/*.sql "$VPS_USER@$VPS_HOST:/tmp/webkit_migrations/"
+    ssh "$VPS_USER@$VPS_HOST" 'mkdir -p /tmp/leaplearn_migrations'
+    scp -r "$MIGRATIONS_DIR"/*.sql "$VPS_USER@$VPS_HOST:/tmp/leaplearn_migrations/"
 
     echo "Running migrations..."
-    ssh "$VPS_USER@$VPS_HOST" 'for f in $(ls /tmp/webkit_migrations/*.sql | sort); do
+    ssh "$VPS_USER@$VPS_HOST" 'for f in $(ls /tmp/leaplearn_migrations/*.sql | sort); do
         filename=$(basename "$f")
         version=$(echo "$filename" | grep -oE "^[0-9]+" | sed "s/^0*//")
         if [ -z "$version" ]; then
@@ -42,27 +42,27 @@ if [ "$1" = "production" ] || [ "$1" = "prod" ]; then
             continue
         fi
         # Check if schema_migrations table exists and if version is already applied
-        already_applied=$(docker exec -i webkit-postgres psql -U webkit -d webkit -tAc "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = '\''schema_migrations'\'') AND EXISTS(SELECT 1 FROM schema_migrations WHERE version = $version);" 2>/dev/null || echo "f")
+        already_applied=$(docker exec -i leaplearn-postgres psql -U postgres -d postgres -tAc "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = '\''schema_migrations'\'') AND EXISTS(SELECT 1 FROM schema_migrations WHERE version = $version);" 2>/dev/null || echo "f")
         if [ "$already_applied" = "t" ]; then
             echo "Skipping: $filename (already applied)"
             continue
         fi
         echo "Running: $filename"
-        docker exec -i webkit-postgres psql -U webkit -d webkit < "$f"
+        docker exec -i leaplearn-postgres psql -U postgres -d postgres < "$f"
         # Record migration if tracking table exists
-        docker exec -i webkit-postgres psql -U webkit -d webkit -c "INSERT INTO schema_migrations (version, filename) VALUES ($version, '\''$filename'\'') ON CONFLICT (version) DO NOTHING;" 2>/dev/null || true
+        docker exec -i leaplearn-postgres psql -U postgres -d postgres -c "INSERT INTO schema_migrations (version, filename) VALUES ($version, '\''$filename'\'') ON CONFLICT (version) DO NOTHING;" 2>/dev/null || true
     done'
 
     echo ""
     echo "Cleaning up..."
-    ssh "$VPS_USER@$VPS_HOST" 'rm -rf /tmp/webkit_migrations'
+    ssh "$VPS_USER@$VPS_HOST" 'rm -rf /tmp/leaplearn_migrations'
 
 else
     echo "Running migrations on LOCAL development..."
     echo ""
 
     # Local: Run via Docker Compose
-    CONTAINER="webkit-postgres"
+    CONTAINER="leaplearn-postgres"
     DB_USER="postgres"
     DB_NAME="postgres"
 

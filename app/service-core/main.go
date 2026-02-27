@@ -13,9 +13,7 @@ import (
 	"service-core/config"
 	"service-core/domain/billing"
 	"service-core/domain/email"
-	"service-core/domain/file"
 	"service-core/domain/login"
-	"service-core/domain/note"
 	"service-core/domain/user"
 	"service-core/grpc"
 	"service-core/rest"
@@ -75,13 +73,10 @@ func main() {
 func setupRESTHandlers(cfg *config.Config, storage *storage.Storage) *rest.Handler {
 	store := query.New(storage.Conn)
 	authService := auth.NewService()
-	fileProvider := file.NewProvider(cfg)
-	fileService := file.NewService(cfg, store, fileProvider)
 	emailProvider := email.NewProvider(cfg)
-	emailService := email.NewService(cfg, store, emailProvider, fileService)
+	emailService := email.NewService(cfg, emailProvider)
 	loginService := login.NewService(cfg, store, authService, emailService)
 	billingService := billing.NewService(cfg, store)
-	noteService := note.NewService(store)
 
 	apiHandler := rest.NewHandler(
 		cfg,
@@ -89,9 +84,6 @@ func setupRESTHandlers(cfg *config.Config, storage *storage.Storage) *rest.Handl
 		authService,
 		loginService,
 		billingService,
-		emailService,
-		fileService,
-		noteService,
 	)
 	return apiHandler
 }
@@ -101,13 +93,11 @@ func setupGRPCHandlers(cfg *config.Config, storage *storage.Storage) *grpc.Handl
 	authService := auth.NewService()
 	loginService := login.NewService(cfg, store, authService, nil) // Email service is not used in gRPC
 	userService := user.NewService(cfg, store)
-	noteService := note.NewService(store)
 	grpcHandler := grpc.NewHandler(
 		cfg,
 		authService,
 		loginService,
 		userService,
-		noteService,
 	)
 	return grpcHandler
 }

@@ -12,9 +12,6 @@ import (
 
 type Querier interface {
 	AcceptPendingMemberships(ctx context.Context, userID uuid.UUID) error
-	CountNotes(ctx context.Context, userID uuid.UUID) (int64, error)
-	DeleteFile(ctx context.Context, id uuid.UUID) error
-	DeleteNote(ctx context.Context, id uuid.UUID) error
 	DeleteTokens(ctx context.Context) error
 	DowngradeOrganisationToFree(ctx context.Context, id uuid.UUID) error
 	// =============================================================================
@@ -22,18 +19,8 @@ type Querier interface {
 	// =============================================================================
 	GetOrganisationBillingInfo(ctx context.Context, id uuid.UUID) (GetOrganisationBillingInfoRow, error)
 	GetOrganisationByStripeCustomer(ctx context.Context, stripeCustomerID string) (Organisation, error)
-	InsertEmail(ctx context.Context, arg InsertEmailParams) (Email, error)
-	InsertEmailAttachment(ctx context.Context, arg InsertEmailAttachmentParams) (EmailAttachment, error)
-	InsertFile(ctx context.Context, arg InsertFileParams) (File, error)
-	InsertNote(ctx context.Context, arg InsertNoteParams) (Note, error)
 	InsertToken(ctx context.Context, arg InsertTokenParams) (Token, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
-	SelectEmailAttachments(ctx context.Context, emailID uuid.UUID) ([]EmailAttachment, error)
-	SelectEmails(ctx context.Context, userID uuid.UUID) ([]Email, error)
-	SelectFile(ctx context.Context, id uuid.UUID) (File, error)
-	SelectFiles(ctx context.Context, userID uuid.UUID) ([]File, error)
-	SelectNote(ctx context.Context, id uuid.UUID) (Note, error)
-	SelectNotes(ctx context.Context, arg SelectNotesParams) ([]Note, error)
 	SelectToken(ctx context.Context, id string) (Token, error)
 	SelectUser(ctx context.Context, id uuid.UUID) (User, error)
 	SelectUserByCustomerID(ctx context.Context, customerID string) (User, error)
@@ -42,7 +29,6 @@ type Querier interface {
 	SelectUsers(ctx context.Context) ([]User, error)
 	UpdateOrganisationStripeCustomer(ctx context.Context, arg UpdateOrganisationStripeCustomerParams) error
 	UpdateOrganisationSubscription(ctx context.Context, arg UpdateOrganisationSubscriptionParams) error
-	UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, error)
 	UpdateToken(ctx context.Context, arg UpdateTokenParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 	UpdateUserAccess(ctx context.Context, arg UpdateUserAccessParams) (User, error)
