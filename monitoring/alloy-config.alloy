@@ -1,0 +1,138 @@
+// OTLP Receiver - accepts traces, metrics, and logs over gRPC and HTTP
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.batch.default.input]
+    logs    = [otelcol.processor.batch.logs.input]
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+// Batch Processor for traces and metrics
+otelcol.processor.batch "default" {
+  output {
+    traces  = [
+      otelcol.exporter.otlp.tempo.input,
+      otelcol.connector.spanmetrics.default.input,
+      otelcol.connector.servicegraph.default.input,
+    ]
+    metrics = [otelcol.exporter.prometheus.default.input]
+  }
+}
+
+// Batch Processor for logs
+otelcol.processor.batch "logs" {
+  output {
+    logs = [otelcol.exporter.otlphttp.loki.input]
+  }
+}
+
+// Batch Processor for span metrics
+otelcol.processor.batch "spanmetrics" {
+  output {
+    metrics = [otelcol.exporter.prometheus.spanmetrics.input]
+  }
+}
+
+// Batch Processor for service graph metrics
+otelcol.processor.batch "servicegraph" {
+  output {
+    metrics = [otelcol.exporter.prometheus.servicegraph.input]
+  }
+}
+
+// Span Metrics Connector - generates RED metrics from traces
+otelcol.connector.spanmetrics "default" {
+  namespace = "span.metrics"
+
+  histogram {
+    explicit {
+      buckets = ["100us", "1ms", "2ms", "6ms", "10ms", "100ms", "250ms", "500ms", "1s"]
+    }
+  }
+
+  exemplars {
+    enabled = true
+  }
+
+  dimension {
+    name = "rpc.system"
+  }
+
+  dimension {
+    name = "rpc.service"
+  }
+
+  dimension {
+    name = "rpc.method"
+  }
+
+  metrics_flush_interval = "15s"
+  aggregation_temporality = "CUMULATIVE"
+
+  output {
+    metrics = [otelcol.processor.batch.spanmetrics.input]
+  }
+}
+
+// Service Graph Connector - generates service relationship metrics
+otelcol.connector.servicegraph "default" {
+  dimensions = [
+    "rpc.system",
+    "rpc.service",
+    "rpc.method",
+  ]
+
+  metrics_flush_interval = "15s"
+
+  output {
+    metrics = [otelcol.processor.batch.servicegraph.input]
+  }
+}
+
+// Exporter: Tempo (traces)
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls {
+      insecure = true
+    }
+  }
+}
+
+// Exporter: Loki (logs)
+otelcol.exporter.otlphttp "loki" {
+  client {
+    endpoint = "http://loki:3100/otlp"
+  }
+}
+
+// Exporter: Prometheus for span metrics - converts OTLP to Prometheus format
+otelcol.exporter.prometheus "spanmetrics" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+}
+
+// Exporter: Prometheus for service graph metrics - converts OTLP to Prometheus format
+otelcol.exporter.prometheus "servicegraph" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+}
+
+// Exporter: Prometheus for application metrics - converts OTLP to Prometheus format
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+}
+
+// Prometheus Remote Write to Prometheus (for all metrics)
+// Note: Requires Prometheus to be started with --enable-feature=remote-write-receiver
+prometheus.remote_write "prometheus" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

@@ -1,0 +1,92 @@
+################################################################################
+# OpenTelemetry Collector Configuration
+################################################################################
+
+mode: deployment
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.123.0" # Use the latest version
+
+presets:
+  kubernetesAttributes:
+    enabled: true
+  clusterMetrics:
+    enabled: false
+  logsCollection:
+    enabled: true
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  processors:
+    batch:
+      send_batch_size: 8192
+      timeout: 1s
+    filter:
+      spans:
+        exclude:
+          match_type: strict
+          span_names:
+            - "sse"
+            - "SSE"
+            - "GET /sse"
+            - "ready"
+            - "GET /ready"
+
+  exporters:
+    otlp/tempo:
+      endpoint: tempo.monitoring.svc.cluster.local:4317
+      tls:
+        insecure: true
+    otlphttp/vls:
+      compression: gzip
+      encoding: proto
+      endpoint: http://vls-victoria-logs-single-server.monitoring.svc.cluster.local:9428/insert/opentelemetry
+      tls:
+        insecure: true
+    # otlphttp/vms:
+    #   compression: gzip
+    #   encoding: proto
+    #   metrics_endpoint: http://vms-victoria-metrics-single-server.monitoring.svc.cluster.local:8428/opentelemetry/v1/metrics
+    #   logs_endpoint: http://vls-victoria-logs-single-server.monitoring.svc.cluster.local:9428/insert/opentelemetry/v1/logs
+    #   tls:
+    #     insecure: true
+    # prometheusremotewrite:
+    #   endpoint: "http://prometheus-server.monitoring.svc.cluster.local:9090/api/v1/write"
+    #   target_info:
+    #     enabled: true
+    #   resource_to_telemetry_conversion:
+    #     enabled: true
+    # otlphttp/prom:
+    #   endpoint: "http://prometheus-server.monitoring.svc.cluster.local:9090/api/v1/otlp"
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [k8sattributes, filter, batch]
+        exporters: [otlp/tempo]
+
+      logs:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlphttp/vls]
+
+    telemetry:
+      logs:
+        level: "info"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 128Mi

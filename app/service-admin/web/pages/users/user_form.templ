@@ -1,0 +1,142 @@
+package users
+
+import (
+	"fmt"
+	pb "service-admin/proto"
+	"service-admin/config"
+	"service-admin/web/pages"
+	"time"
+)
+
+func formatDateTimeLocal(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+	t, err := time.Parse(time.RFC3339, dateStr)
+	if err != nil {
+		return ""
+	}
+	return t.Format("2006-01-02T15:04")
+}
+
+templ UserForm(formId string, method string, user *pb.User) {
+	<form
+		id={ formId }
+		action="/users"
+		method="post"
+		hx-boost="true"
+		hx-swap="morph:innerHTML"
+		hx-target="#content"
+		class="grid grid-cols-2 gap-4"
+	>
+		<input type="hidden" name="_method" value={ method }/>
+		<input type="hidden" name="id" value={ user.GetId() }/>
+		
+		<label class="floating-label">
+			<span>Email</span>
+			<input
+				name="email"
+				type="email"
+				placeholder="Email"
+				class="input validator w-full"
+				required
+				value={ user.GetEmail() }
+			/>
+			<div class="validator-hint">
+				Enter valid email address
+			</div>
+		</label>
+		
+		<label class="floating-label">
+			<span>Phone</span>
+			<input
+				name="phone"
+				type="tel"
+				placeholder="Phone"
+				class="input validator w-full"
+				value={ user.GetPhone() }
+			/>
+			<div class="validator-hint">
+				Enter phone number (optional)
+			</div>
+		</label>
+		
+		<label class="floating-label">
+			<span>Access Level</span>
+			<input
+				name="access"
+				type="number"
+				placeholder="Access"
+				class="input validator w-full"
+				required
+				value={ fmt.Sprintf("%v", user.Access) }
+			/>
+			<div class="validator-hint">
+				Enter numeric access level
+			</div>
+		</label>
+		
+		<label class="floating-label">
+			<span>Avatar URL</span>
+			<input
+				name="avatar"
+				type="url"
+				placeholder="Avatar URL"
+				class="input validator w-full"
+				value={ user.GetAvatar() }
+			/>
+			<div class="validator-hint">
+				Enter avatar image URL (optional)
+			</div>
+		</label>
+		
+		<label class="floating-label">
+			<span>Subscription ID</span>
+			<input
+				name="subscription_id"
+				type="text"
+				placeholder="Subscription ID"
+				class="input validator w-full"
+				value={ user.GetSubscriptionId() }
+			/>
+			<div class="validator-hint">
+				Enter subscription ID (optional)
+			</div>
+		</label>
+		
+		<label class="floating-label">
+			<span>Subscription End Date</span>
+			<input
+				name="subscription_end"
+				type="datetime-local"
+				placeholder="Subscription End"
+				class="input validator w-full"
+				value={ formatDateTimeLocal(user.GetSubscriptionEnd()) }
+			/>
+			<div class="validator-hint">
+				Select subscription end date (optional)
+			</div>
+		</label>
+		
+		<label class="floating-label col-span-2">
+			<span>API Key</span>
+			<input
+				name="api_key"
+				type="text"
+				placeholder="API Key"
+				class="input validator w-full font-mono text-sm"
+				value={ user.GetApiKey() }
+			/>
+			<div class="validator-hint">
+				API key for programmatic access (automatically generated)
+			</div>
+		</label>
+		
+	</form>
+}
+
+templ UserFormPage(cfg *config.Config, user *pb.User) {
+	@pages.Layout(cfg) {
+		@UserForm("edit_user", "PUT", user)
+	}
+}

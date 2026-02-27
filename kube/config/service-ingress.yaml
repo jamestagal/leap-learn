@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: service-ingress
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure,web
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: default
+spec:
+  rules:
+    - host: ${CORE_URL}
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: service-core-sv
+              port:
+                name: web
+    - host: ${ADMIN_URL}
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: service-admin-sv
+              port:
+                name: web
+        - path: /sse
+          pathType: Prefix
+          backend:
+            service:
+              name: service-admin-sv
+              port:
+                name: sse
+    - host: ${CLIENT_URL}
+      http:
+        paths:
+        - path: /
+          pathType: Prefix
+          backend:
+            service:
+              name: service-client-sv
+              port:
+                name: web

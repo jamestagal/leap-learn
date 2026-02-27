@@ -1,0 +1,56 @@
+################################################################################
+# Grafana Alloy configuration
+################################################################################
+
+alloy:
+  configMap:
+    content: |-
+      otelcol.receiver.otlp "default" {
+        grpc {
+          endpoint = "0.0.0.0:4317"
+        }
+
+        http {
+          endpoint = "0.0.0.0:4318"
+        }
+
+        output {
+          traces  = [otelcol.processor.batch.default.input]
+          logs    = [otelcol.processor.batch.default.input]
+        }
+      }
+
+      otelcol.processor.batch "default" {
+        output {
+          traces  = [otelcol.exporter.otlp.tempo.input]
+          logs    = [otelcol.exporter.otlphttp.vls.input]
+        }
+      }
+
+      otelcol.exporter.otlp "tempo" {
+        client {
+          endpoint = "tempo.monitoring.svc.cluster.local:4317"
+          tls {
+            insecure = true
+          }
+        }
+      }
+
+      otelcol.exporter.otlphttp "vls" {
+        client {
+          endpoint = "vls-victoria-logs-single-server.monitoring.svc.cluster.local:9428/insert/opentelemetry/v1/logs"
+          tls {
+            insecure = true
+          }
+        }
+      }
+
+  extraPorts:
+    - name: otelcol
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otelcol-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP

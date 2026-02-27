@@ -1,0 +1,259 @@
+# Production Docker Compose for Hostinger VPS with Traefik
+# This connects to an existing Traefik instance on the traefik-public network
+
+services:
+  # =============================================================================
+  # Core API Service (Go)
+  # =============================================================================
+  core:
+    image: ghcr.io/jamestagal/leap-learn/service-core-r:latest
+    container_name: leaplearn-core
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      HTTP_PORT: 4001
+      GRPC_PORT: 4002
+      DOMAIN: leaplearn.au
+      TASK_TOKEN: ${TASK_TOKEN}
+      CORE_URL: https://api.leaplearn.au
+      ADMIN_URL: https://admin.leaplearn.au
+      CLIENT_URL: https://app.leaplearn.au
+      # Database
+      DATABASE_PROVIDER: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-leaplearn}
+      POSTGRES_USER: ${POSTGRES_USER:-leaplearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Auth
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-google}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # Payment
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-stripe}
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      # Email
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@leaplearn.au}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      # JWT Keys (runtime injection)
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      # File Storage (R2)
+      FILE_PROVIDER: r2
+      BUCKET_NAME: ${BUCKET_NAME:-leaplearn-files}
+      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_ACCESS_KEY: ${R2_ACCESS_KEY}
+      R2_SECRET_KEY: ${R2_SECRET_KEY}
+    networks:
+      - traefik-public
+      - leaplearn-internal
+    labels:
+      - "traefik.enable=true"
+      # HTTP API
+      - "traefik.http.routers.leaplearn-api.rule=Host(`api.leaplearn.au`)"
+      - "traefik.http.routers.leaplearn-api.entrypoints=websecure"
+      - "traefik.http.routers.leaplearn-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.leaplearn-api.service=leaplearn-api"
+      - "traefik.http.routers.leaplearn-api.middlewares=api-ratelimit@docker"
+      - "traefik.http.services.leaplearn-api.loadbalancer.server.port=4001"
+      # Rate limiting
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.burst=200"
+      - "traefik.http.middlewares.api-ratelimit.ratelimit.period=1s"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # =============================================================================
+  # Admin Service (Go + Templ)
+  # =============================================================================
+  admin:
+    image: ghcr.io/jamestagal/leap-learn/service-admin-r:latest
+    container_name: leaplearn-admin
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      HTTP_PORT: 3001
+      SSE_PORT: 3002
+      DOMAIN: leaplearn.au
+      ADMIN_URL: https://admin.leaplearn.au
+      SSE_URL: https://admin.leaplearn.au
+      NATS_URL: nats://nats:4222
+      CORE_URL: https://api.leaplearn.au
+      CORE_URI: core:4002
+      # JWT Keys (runtime injection)
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+    networks:
+      - traefik-public
+      - leaplearn-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.leaplearn-admin.rule=Host(`admin.leaplearn.au`)"
+      - "traefik.http.routers.leaplearn-admin.entrypoints=websecure"
+      - "traefik.http.routers.leaplearn-admin.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.leaplearn-admin.service=leaplearn-admin"
+      - "traefik.http.routers.leaplearn-admin.middlewares=admin-ratelimit@docker"
+      - "traefik.http.services.leaplearn-admin.loadbalancer.server.port=3001"
+      # Rate limiting
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.average=50"
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.burst=100"
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.period=1s"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      - core
+      - nats
+
+  # =============================================================================
+  # Client Service (SvelteKit - Node adapter for production)
+  # =============================================================================
+  client:
+    image: ghcr.io/jamestagal/leap-learn/service-client-r:latest
+    container_name: leaplearn-client
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      ORIGIN: https://app.leaplearn.au
+      # Server-side URLs (for SSR/hooks - uses internal Docker network)
+      CORE_URL: http://leaplearn-core:4001
+      DOMAIN: leaplearn.au
+      # Client-side URLs (for browser requests)
+      PUBLIC_CORE_URL: https://api.leaplearn.au
+      PUBLIC_CLIENT_URL: https://app.leaplearn.au
+      PUBLIC_APP_DOMAIN: leaplearn.au
+      # Database for Drizzle (individual vars for pg.Pool)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-leaplearn}
+      POSTGRES_USER: ${POSTGRES_USER:-leaplearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Connection strings (for compatibility)
+      DATABASE_URL: postgres://${POSTGRES_USER:-leaplearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leaplearn}
+      DIRECT_URL: postgres://${POSTGRES_USER:-leaplearn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leaplearn}
+      # Email (Resend)
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM:-noreply@leaplearn.au}
+      EMAIL_FROM_NAME: LeapLearn
+      # PDF generation
+      GOTENBERG_URL: http://gotenberg:3000
+      # AI Services
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # JWT Keys (runtime injection)
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY}
+      # Sentry error tracking
+      PUBLIC_SENTRY_DSN: ${SENTRY_DSN:-}
+    networks:
+      - traefik-public
+      - leaplearn-internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.leaplearn-client.rule=Host(`app.leaplearn.au`)"
+      - "traefik.http.routers.leaplearn-client.entrypoints=websecure"
+      - "traefik.http.routers.leaplearn-client.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.leaplearn-client.service=leaplearn-client"
+      - "traefik.http.routers.leaplearn-client.middlewares=client-ratelimit@docker"
+      - "traefik.http.services.leaplearn-client.loadbalancer.server.port=3000"
+      # Rate limiting
+      - "traefik.http.middlewares.client-ratelimit.ratelimit.average=200"
+      - "traefik.http.middlewares.client-ratelimit.ratelimit.burst=400"
+      - "traefik.http.middlewares.client-ratelimit.ratelimit.period=1s"
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      - core
+
+  # =============================================================================
+  # PostgreSQL Database
+  # =============================================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: leaplearn-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leaplearn}
+      POSTGRES_USER: ${POSTGRES_USER:-leaplearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - leaplearn-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-leaplearn} -d ${POSTGRES_DB:-leaplearn}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # NATS Message Queue
+  # =============================================================================
+  nats:
+    image: nats:latest
+    container_name: leaplearn-nats
+    restart: unless-stopped
+    command: ["--cluster_name", "leaplearn"]
+    networks:
+      - leaplearn-internal
+
+  # =============================================================================
+  # Gotenberg (PDF Generation)
+  # =============================================================================
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: leaplearn-gotenberg
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--api-timeout=60s"
+      - "--chromium-restart-after=50"
+      - "--chromium-max-queue-size=10"
+      - "--log-level=warn"
+    networks:
+      - leaplearn-internal
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  traefik-public:
+    external: true
+  leaplearn-internal:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres_data:

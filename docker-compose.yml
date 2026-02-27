@@ -1,0 +1,237 @@
+services:
+
+  core:
+    container_name: leaplearn-core
+    build:
+      context: ./app
+      dockerfile: ./service-core/Dockerfile
+      target: dev
+    volumes:
+      - ./app/service-core:/app/service-core
+    ports:
+      - 4001:4001
+      - 4002:4002
+    environment:
+      LOG_LEVEL: debug
+      HTTP_PORT: 4001
+      GRPC_PORT: 4002
+      DOMAIN: localhost
+      TASK_TOKEN: 1234
+      CORE_URL: http://localhost:4001
+      ADMIN_URL: http://localhost:3001
+      CLIENT_URL: http://localhost:3000
+      #
+      # Database (postgres, sqlite, turso)
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TURSO_URL: ${TURSO_URL}
+      TURSO_TOKEN: ${TURSO_TOKEN}
+      #
+      # Auth (local, github, google, twilio)
+      AUTH_PROVIDER: ${AUTH_PROVIDER}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_SERVICE_SID: ${TWILIO_SERVICE_SID}
+      #
+      # Payment (local, stripe)
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_PRICE_ID_BASIC: ${STRIPE_PRICE_ID_BASIC}
+      STRIPE_PRICE_ID_PREMIUM: ${STRIPE_PRICE_ID_PREMIUM}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      #
+      # Organisation Billing (Platform Subscriptions)
+      STRIPE_PRICE_STARTER_MONTHLY: ${STRIPE_PRICE_STARTER_MONTHLY:-}
+      STRIPE_PRICE_STARTER_YEARLY: ${STRIPE_PRICE_STARTER_YEARLY:-}
+      STRIPE_PRICE_GROWTH_MONTHLY: ${STRIPE_PRICE_GROWTH_MONTHLY:-}
+      STRIPE_PRICE_GROWTH_YEARLY: ${STRIPE_PRICE_GROWTH_YEARLY:-}
+      STRIPE_PRICE_ENTERPRISE_MONTHLY: ${STRIPE_PRICE_ENTERPRISE_MONTHLY:-}
+      STRIPE_PRICE_ENTERPRISE_YEARLY: ${STRIPE_PRICE_ENTERPRISE_YEARLY:-}
+      STRIPE_BILLING_WEBHOOK_SECRET: ${STRIPE_BILLING_WEBHOOK_SECRET:-}
+      #
+      # Email (local, postmark, sendgrid, resend, ses, smtp)
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER}
+      EMAIL_FROM: ${EMAIL_FROM}
+      POSTMARK_API_KEY: ${POSTMARK_API_KEY}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      SES_ACCESS_KEY: ${SES_ACCESS_KEY}
+      SES_SECRET_KEY: ${SES_SECRET_KEY}
+      SES_REGION: ${SES_REGION}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      #
+      # File (local, r2, s3, gcs, azblob)
+      FILE_PROVIDER: ${FILE_PROVIDER}
+      LOCAL_FILE_DIR: ${LOCAL_FILE_DIR}
+      BUCKET_NAME: ${BUCKET_NAME}
+      R2_ENDPOINT: ${R2_ENDPOINT}
+      R2_ACCESS_KEY: ${R2_ACCESS_KEY}
+      R2_SECRET_KEY: ${R2_SECRET_KEY}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
+      AZBLOB_ACCOUNT_NAME: ${AZBLOB_ACCOUNT_NAME}
+      AZBLOB_ACCOUNT_KEY: ${AZBLOB_ACCOUNT_KEY}
+
+  admin:
+    container_name: leaplearn-admin
+    build:
+      context: ./app
+      dockerfile: ./service-admin/Dockerfile
+      target: dev
+    volumes:
+      - ./app/service-admin:/app/service-admin
+      - /app/service-admin/node_modules
+    ports:
+      - 3001:3001
+      - 3002:3002
+    environment:
+      LOG_LEVEL: debug
+      HTTP_PORT: 3001
+      SSE_PORT: 3002
+      DOMAIN: localhost
+      ADMIN_URL: http://localhost:3001
+      SSE_URL: http://localhost:3002
+      NATS_URL: nats://nats:4222
+      CORE_URL: http://localhost:4001
+      CORE_URI: core:4002
+
+  client:
+    container_name: leaplearn-client
+    working_dir: /service
+    build:
+      context: ./service-client
+      target: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./service-client/src:/service/src
+      - ./service-client/.svelte-kit:/service/.svelte-kit
+      - ./service-client/.env:/service/.env
+      - /service/node_modules
+    ports:
+      - 3000:3000
+    environment:
+      LOG_LEVEL: debug
+      DOMAIN: localhost
+      PUBLIC_CLIENT_URL: http://localhost:3000
+      PUBLIC_APP_DOMAIN: leaplearn.au
+      CORE_URL: http://core:4001
+      PUBLIC_CORE_URL: http://localhost:4001
+      # PostgreSQL direct access for remote functions
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # Gotenberg PDF generation
+      GOTENBERG_URL: http://gotenberg:3000
+      # Resend email service (production)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-noreply@leaplearn.au}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-LeapLearn}
+      # SMTP for local testing (Mailpit)
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      # AI Services
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # MinIO (S3-compatible storage for H5P libraries)
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: leaplearn-h5p
+      S3_REGION: us-east-1
+      # Sentry error tracking (empty = disabled locally)
+      PUBLIC_SENTRY_DSN: ""
+  minio:
+    container_name: leaplearn-minio
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - 9000:9000   # S3 API
+      - 9001:9001   # Console UI
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  mailpit:
+    container_name: leaplearn-mailpit
+    image: axllent/mailpit
+    restart: unless-stopped
+    ports:
+      - 8025:8025  # Web UI
+      - 1025:1025  # SMTP
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  postgres:
+    container_name: leaplearn-postgres
+    image: pgvector/pgvector:pg17
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    container_name: leaplearn-nats
+    image: nats
+    ports:
+      - 8222:8222
+    command: "--cluster_name NATS --cluster nats://0.0.0.0:6222 --http_port 8222"
+
+  gotenberg:
+    container_name: leaplearn-gotenberg
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    ports:
+      - 3003:3000
+    command:
+      - "gotenberg"
+      - "--api-timeout=60s"
+      - "--chromium-restart-after=50"
+      - "--log-level=info"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  minio_data:

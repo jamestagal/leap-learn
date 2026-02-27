@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-core
+  namespace: default
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: service-core
+  template:
+    metadata:
+      labels:
+        app: service-core
+    spec:
+      shareProcessNamespace: true
+      containers:
+        - name: service-core
+          image: ghcr.io/${GITHUB_REPO}/${CORE_IMAGE}:latest
+          imagePullPolicy: Always
+          ports:
+          - name: web
+            protocol: TCP
+            containerPort: 4001
+          - name: grpc
+            protocol: TCP
+            containerPort: 4002
+          readinessProbe:
+            httpGet: 
+              port: web
+              path: /ready
+          livenessProbe:
+            httpGet:
+              port: web
+              path: /ready
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          env:
+            # General
+            - { name: "LOG_LEVEL", value: "${LOG_LEVEL}" }
+            - { name: "HTTP_PORT", value: "4001" }
+            - { name: "GRPC_PORT", value: "4002" }
+            - { name: "DOMAIN", value: "${DOMAIN}" }
+            - { name: "CORE_URL", value: "https://${CORE_URL}" }
+            - { name: "ADMIN_URL", value: "https://${ADMIN_URL}" }
+            - { name: "CLIENT_URL", value: "https://${CLIENT_URL}" }
+            - name: TASK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: task-token
+
+            # Database
+            - { name: "DATABASE_PROVIDER", value: "${DATABASE_PROVIDER}" }
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: host
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: port
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: dbname
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: password
+
+            # Auth
+            - { name: "GITHUB_CLIENT_ID", value: "${GITHUB_CLIENT_ID}" }
+            - { name: "GITHUB_CLIENT_SECRET", value: "${GITHUB_CLIENT_SECRET}" }
+            - { name: "GOOGLE_CLIENT_ID", value: "${GOOGLE_CLIENT_ID}" }
+            - { name: "GOOGLE_CLIENT_SECRET", value: "${GOOGLE_CLIENT_SECRET}" }
+            - { name: "TWILIO_ACCOUNT_SID", value: "${TWILIO_ACCOUNT_SID}" }
+            - { name: "TWILIO_AUTH_TOKEN", value: "${TWILIO_AUTH_TOKEN}" }
+            - { name: "TWILIO_SERVICE_SID", value: "${TWILIO_SERVICE_SID}" }
+
+            # Payment
+            - { name: "PAYMENT_PROVIDER", value: "${PAYMENT_PROVIDER}" }
+            - { name: "STRIPE_API_KEY", value: "${STRIPE_API_KEY}" }
+            - { name: "STRIPE_PRICE_ID_BASIC", value: "${STRIPE_PRICE_ID_BASIC}" }
+            - { name: "STRIPE_PRICE_ID_PREMIUM", value: "${STRIPE_PRICE_ID_PREMIUM}" }
+            - { name: "STRIPE_WEBHOOK_SECRET", value: "${STRIPE_WEBHOOK_SECRET}" }
+
+            # Email
+            - { name: "EMAIL_PROVIDER", value: "${EMAIL_PROVIDER}" }
+            - { name: "EMAIL_FROM", value: "${EMAIL_FROM}" }
+            - { name: "POSTMARK_API_KEY", value: "${POSTMARK_API_KEY}" }
+            - { name: "SENDGRID_API_KEY", value: "${SENDGRID_API_KEY}" }
+            - { name: "RESEND_API_KEY", value: "${RESEND_API_KEY}" }
+            - { name: "SES_ACCESS_KEY", value: "${SES_ACCESS_KEY}" }
+            - { name: "SES_SECRET_KEY", value: "${SES_SECRET_KEY}" }
+            - { name: "SES_REGION", value: "${SES_REGION}" }
+
+            # File
+            - { name: "FILE_PROVIDER", value: "${FILE_PROVIDER}" }
+            - { name: "FILE_DIR", value: "${FILE_DIR}" }
+            - { name: "BUCKET_NAME", value: "${BUCKET_NAME}" }
+            - { name: "R2_ENDPOINT", value: "${R2_ENDPOINT}" }
+            - { name: "R2_ACCESS_KEY", value: "${R2_ACCESS_KEY}" }
+            - { name: "R2_SECRET_KEY", value: "${R2_SECRET_KEY}" }
+            - { name: "S3_REGION", value: "${S3_REGION}" }
+            - { name: "S3_ACCESS_KEY", value: "${S3_ACCESS_KEY}" }
+            - { name: "S3_SECRET_KEY", value: "${S3_SECRET_KEY}" }
+            - { name: "GOOGLE_APPLICATION_CREDENTIALS", value: "${GOOGLE_APPLICATION_CREDENTIALS}" }
+            - { name: "AZBLOB_ACCOUNT_NAME", value: "${AZBLOB_ACCOUNT_NAME}" }
+            - { name: "AZBLOB_ACCOUNT_KEY", value: "${AZBLOB_ACCOUNT_KEY}" }
+          resources:
+             requests:
+               memory: "256Mi"
+               cpu: "100m"
+             limits:
+               memory: "512Mi"
+               cpu: "500m"
+        # Comment if not using OpenTelemetry
+        - name: otel-go-auto-instrumentation
+          image: otel/autoinstrumentation-go:latest # Use a specific version in production
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: OTEL_GO_AUTO_TARGET_EXE
+              value: "/app"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_SERVICE_NAME
+              value: "service-core"
+            - name: OTEL_LOG_LEVEL
+              value: "info"
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          resources:
+             requests:
+               memory: "64Mi"
+               cpu: "50m"
+             limits:
+               memory: "256Mi"
+               cpu: "200m"
+      # Uncomment if using Google Cloud SQL
+      #   - name: cloud-sql-proxy
+      #     image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.16.0
+      #     args:
+      #       - "--structured-logs"
+      #       - "${CLOUD_SQL_CONNECTION_NAME}"
+      #       - "--credentials-file=/secrets/gcp/key.json"
+      #     securityContext:
+      #       runAsUser: 65532
+      #       allowPrivilegeEscalation: false
+      #     resources:
+      #        requests:
+      #          memory: "64Mi"
+      #          cpu: "50m"
+      #        limits:
+      #          memory: "256Mi"
+      #          cpu: "200m"
+      #     volumeMounts:
+      #       - name: gcp-sa-key-volume
+      #         mountPath: /secrets/gcp/
+      #         readOnly: true
+      # volumes:
+      #   - name: gcp-sa-key-volume
+      #     secret:
+      #       secretName: gcp-sa-key
+      imagePullSecrets:
+        - name: regcred

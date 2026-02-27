@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webkit - Streamline Your Agency Workflow</title>
+    <meta name="description" content="The all-in-one platform for web agencies to create AI-powered consultations, proposals, contracts, and invoices.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['Syne', 'sans-serif'],
+                        body: ['DM Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        surface: {
+                            DEFAULT: '#0a0a0b',
+                            50: '#111113',
+                            100: '#18181b',
+                            200: '#27272a',
+                        },
+                        accent: {
+                            DEFAULT: '#ff6b35',
+                            light: '#ff8c5a',
+                            dark: '#e55a2b',
+                        },
+                        muted: '#71717a',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background-color: #0a0a0b;
+            color: #fafafa;
+        }
+
+        .font-display {
+            font-family: 'Syne', sans-serif;
+        }
+
+        /* Animated gradient background */
+        .hero-gradient {
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 107, 53, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(255, 140, 90, 0.1), transparent),
+                radial-gradient(ellipse 50% 30% at 0% 100%, rgba(255, 107, 53, 0.08), transparent);
+            animation: gradientShift 15s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% {
+                background-position: 0% 0%, 100% 0%, 0% 100%;
+            }
+            50% {
+                background-position: 100% 50%, 0% 50%, 100% 50%;
+            }
+        }
+
+        /* Noise texture overlay */
+        .noise-overlay::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        /* Geometric decorations */
+        .geo-line {
+            background: linear-gradient(90deg, transparent, rgba(255, 107, 53, 0.3), transparent);
+            height: 1px;
+        }
+
+        .geo-circle {
+            border: 1px solid rgba(255, 107, 53, 0.2);
+            border-radius: 50%;
+            animation: pulse-ring 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse-ring {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.05); opacity: 0.15; }
+        }
+
+        /* Staggered animations */
+        .fade-up {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: fadeUp 0.8s ease-out forwards;
+        }
+
+        @keyframes fadeUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+        .delay-4 { animation-delay: 0.4s; }
+        .delay-5 { animation-delay: 0.5s; }
+        .delay-6 { animation-delay: 0.6s; }
+
+        /* Feature card hover */
+        .feature-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .feature-card:hover {
+            border-color: rgba(255, 107, 53, 0.3);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -15px rgba(255, 107, 53, 0.15);
+        }
+
+        .feature-card .icon-wrapper {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .feature-card:hover .icon-wrapper {
+            background: rgba(255, 107, 53, 0.15);
+            transform: scale(1.05);
+        }
+
+        /* Step connector line */
+        .step-line {
+            background: linear-gradient(180deg, rgba(255, 107, 53, 0.4) 0%, rgba(255, 107, 53, 0.1) 100%);
+            width: 2px;
+        }
+
+        /* Step number animation - progressive highlighting */
+        .step-number {
+            background: #18181b;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+            transform: scale(1);
+            transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .step-number.highlighted {
+            background: linear-gradient(135deg, #ff6b35 0%, #ff8c5a 100%);
+            border: none;
+            box-shadow: 0 10px 40px -10px rgba(255, 107, 53, 0.5);
+            transform: scale(1.08);
+        }
+
+        .step-item {
+            opacity: 0.4;
+            transform: translateX(0);
+            transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .step-item.highlighted {
+            opacity: 1;
+        }
+
+        .step-item.highlighted h3 {
+            color: #ff6b35;
+        }
+
+        .step-item h3 {
+            transition: color 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        /* Current step gets extra emphasis */
+        .step-item.current .step-number {
+            transform: scale(1.15);
+            box-shadow: 0 15px 50px -10px rgba(255, 107, 53, 0.6);
+        }
+
+        /* Button styles */
+        .btn-primary {
+            background: linear-gradient(135deg, #ff6b35 0%, #ff8c5a 100%);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, #ff8c5a 0%, #ff6b35 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .btn-primary:hover::before {
+            opacity: 1;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px -10px rgba(255, 107, 53, 0.5);
+        }
+
+        .btn-primary span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .btn-secondary {
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            border-color: rgba(255, 107, 53, 0.5);
+            background: rgba(255, 107, 53, 0.05);
+        }
+
+        /* Scroll indicator */
+        .scroll-indicator {
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(8px); }
+        }
+
+        /* Section reveal on scroll */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Glowing orb decoration */
+        .glow-orb {
+            background: radial-gradient(circle, rgba(255, 107, 53, 0.4) 0%, transparent 70%);
+            filter: blur(60px);
+            animation: float 8s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -20px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+
+        /* Grid pattern */
+        .grid-pattern {
+            background-image:
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        /* Honeycomb pattern */
+        .honeycomb-pattern {
+            position: relative;
+        }
+
+        .honeycomb-pattern::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%23ff6b35' fill-opacity='0.04'%3E%3Cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.98-7.5V0h-2v6.35L0 12.69v2.3zm0 18.5L12.98 41v8h-2v-6.85L0 35.81v-2.3zM15 0v7.5L27.99 15H28v-2.31h-.01L17 6.35V0h-2zm0 49v-8l12.99-7.5H28v2.31h-.01L17 42.15V49h-2z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            opacity: 0.6;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Honeycomb hero background - using user's pattern with accent color */
+        .honeycomb-hero {
+            position: relative;
+        }
+
+        .honeycomb-hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJhIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB3aWR0aD0iMjkiIGhlaWdodD0iNTAuMTE1IiBwYXR0ZXJuVHJhbnNmb3JtPSJzY2FsZSgyKSI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idHJhbnNwYXJlbnQiLz48cGF0aCBkPSJNMTQuNDk4IDE2Ljg1OCAwIDguNDg4LjAwMi04LjI1N2wxNC41LTguMzc0TDI5LTguMjZsLS4wMDIgMTYuNzQ1em0wIDUwLjA2TDAgNTguNTQ4bC4wMDItMTYuNzQ1IDE0LjUtOC4zNzNMMjkgNDEuOGwtLjAwMiAxNi43NDR6TTI4Ljk5NiA0MS44bC0xNC40OTgtOC4zNy4wMDItMTYuNzQ0TDI5IDguMzEybDE0LjQ5OCA4LjM3LS4wMDIgMTYuNzQ1em0tMjkgMC0xNC40OTgtOC4zNy4wMDItMTYuNzQ0TDAgOC4zMTJsMTQuNDk4IDguMzctLjAwMiAxNi43NDV6IiBzdHJva2Utd2lkdGg9Ii41IiBzdHJva2U9InJnYmEoMjU1LDEwNyw1MywwLjI1KSIgZmlsbD0ibm9uZSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjgwMCUiIGhlaWdodD0iODAwJSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTM4IC02LjQ2KSIgZmlsbD0idXJsKCNhKSIvPjwvc3ZnPg==");
+            opacity: 0.8;
+            pointer-events: none;
+            z-index: 1;
+            mask-image: radial-gradient(ellipse 100% 80% at 50% 30%, black 0%, transparent 70%);
+            -webkit-mask-image: radial-gradient(ellipse 100% 80% at 50% 30%, black 0%, transparent 70%);
+        }
+    </style>
+</head>
+<body class="overflow-x-hidden">
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-2 fade-up">
+                <div class="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <span class="font-display font-bold text-xl tracking-tight">Webkit</span>
+            </a>
+            <div class="hidden md:flex items-center gap-8 fade-up delay-1">
+                <a href="#features" class="text-sm text-zinc-400 hover:text-white transition-colors">Features</a>
+                <a href="#how-it-works" class="text-sm text-zinc-400 hover:text-white transition-colors">How it Works</a>
+                <a href="https://app.webkit.au" class="btn-primary px-5 py-2.5 rounded-full text-sm font-medium">
+                    <span>Get Started</span>
+                </a>
+            </div>
+            <a href="https://app.webkit.au" class="md:hidden btn-primary px-4 py-2 rounded-full text-sm font-medium fade-up delay-1">
+                <span>Get Started</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex items-center justify-center hero-gradient noise-overlay honeycomb-hero overflow-hidden">
+        <!-- Decorative elements -->
+        <div class="absolute top-1/4 left-10 w-64 h-64 geo-circle hidden lg:block"></div>
+        <div class="absolute bottom-1/4 right-10 w-48 h-48 geo-circle hidden lg:block" style="animation-delay: -2s;"></div>
+        <div class="absolute top-1/2 left-1/4 w-32 h-32 glow-orb"></div>
+        <div class="absolute bottom-1/3 right-1/4 w-40 h-40 glow-orb" style="animation-delay: -4s;"></div>
+
+        <div class="relative z-10 max-w-5xl mx-auto px-6 text-center pt-24">
+            <!-- Eyebrow -->
+            <div class="fade-up inline-flex items-center gap-2 px-4 py-2 rounded-full bg-surface-50 border border-surface-200 mb-8">
+                <span class="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
+                <span class="text-sm text-zinc-400">Built for modern web agencies</span>
+            </div>
+
+            <!-- Main headline -->
+            <h1 class="font-display font-bold text-5xl md:text-7xl lg:text-8xl tracking-tight leading-[0.95] mb-6 fade-up delay-1">
+                <span class="block">Streamline your</span>
+                <span class="block bg-gradient-to-r from-accent via-accent-light to-accent bg-clip-text text-transparent">
+                    agency workflow
+                </span>
+            </h1>
+
+            <!-- Subheadline -->
+            <p class="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed fade-up delay-2">
+                From AI-powered consultations to polished proposals, contracts, and invoices —
+                everything you need to win and manage clients in one place.
+            </p>
+
+            <!-- CTAs -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 fade-up delay-3">
+                <a href="https://app.webkit.au" class="btn-primary px-8 py-4 rounded-full text-base font-semibold">
+                    <span class="flex items-center gap-2">
+                        Start Free Trial
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                        </svg>
+                    </span>
+                </a>
+                <a href="#features" class="btn-secondary px-8 py-4 rounded-full text-base font-medium">
+                    See Features
+                </a>
+            </div>
+
+            <!-- Stats -->
+            <div class="grid grid-cols-3 gap-8 max-w-lg mx-auto mt-16 pt-8 border-t border-surface-200 fade-up delay-4">
+                <div class="text-center">
+                    <div class="font-display font-bold text-2xl md:text-3xl text-white">10x</div>
+                    <div class="text-xs md:text-sm text-zinc-500 mt-1">Faster Proposals</div>
+                </div>
+                <div class="text-center">
+                    <div class="font-display font-bold text-2xl md:text-3xl text-white">85%</div>
+                    <div class="text-xs md:text-sm text-zinc-500 mt-1">Close Rate</div>
+                </div>
+                <div class="text-center">
+                    <div class="font-display font-bold text-2xl md:text-3xl text-white">4hrs</div>
+                    <div class="text-xs md:text-sm text-zinc-500 mt-1">Saved Weekly</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scroll indicator -->
+        <div class="absolute bottom-8 left-1/2 -translate-x-1/2 scroll-indicator fade-up delay-5">
+            <svg class="w-6 h-6 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+            </svg>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="relative py-32 px-6 grid-pattern">
+        <div class="max-w-7xl mx-auto">
+            <!-- Section header -->
+            <div class="text-center mb-20 reveal">
+                <span class="inline-block px-4 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium mb-6">
+                    Features
+                </span>
+                <h2 class="font-display font-bold text-4xl md:text-5xl lg:text-6xl tracking-tight mb-6">
+                    Everything you need,<br>
+                    <span class="text-zinc-500">nothing you don't</span>
+                </h2>
+                <p class="text-lg text-zinc-400 max-w-2xl mx-auto">
+                    A complete toolkit designed specifically for web agencies who want to
+                    professionalize their client experience.
+                </p>
+            </div>
+
+            <!-- Feature grid -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 reveal">
+                <!-- Feature 1: Consultations -->
+                <div class="feature-card rounded-2xl p-8 group">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl bg-surface-100 flex items-center justify-center mb-6">
+                        <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-display font-semibold text-xl mb-3">AI Consultations</h3>
+                    <p class="text-zinc-400 leading-relaxed">
+                        Intelligent discovery forms that analyze client needs and generate comprehensive
+                        requirements automatically.
+                    </p>
+                </div>
+
+                <!-- Feature 2: Proposals -->
+                <div class="feature-card rounded-2xl p-8 group">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl bg-surface-100 flex items-center justify-center mb-6">
+                        <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-display font-semibold text-xl mb-3">Beautiful Proposals</h3>
+                    <p class="text-zinc-400 leading-relaxed">
+                        Generate stunning, branded proposals in minutes. Track views, get real-time
+                        notifications, and close deals faster.
+                    </p>
+                </div>
+
+                <!-- Feature 3: Contracts -->
+                <div class="feature-card rounded-2xl p-8 group">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl bg-surface-100 flex items-center justify-center mb-6">
+                        <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-display font-semibold text-xl mb-3">Digital Contracts</h3>
+                    <p class="text-zinc-400 leading-relaxed">
+                        Professional contracts with e-signatures. Legally binding, beautifully designed,
+                        and ready to sign instantly.
+                    </p>
+                </div>
+
+                <!-- Feature 4: Invoices -->
+                <div class="feature-card rounded-2xl p-8 group">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl bg-surface-100 flex items-center justify-center mb-6">
+                        <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-display font-semibold text-xl mb-3">Smart Invoicing</h3>
+                    <p class="text-zinc-400 leading-relaxed">
+                        Create and send invoices with integrated payment links. Stripe Connect for
+                        seamless online payments.
+                    </p>
+                </div>
+
+                <!-- Feature 5: Questionnaires -->
+                <div class="feature-card rounded-2xl p-8 group">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl bg-surface-100 flex items-center justify-center mb-6">
+                        <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-display font-semibold text-xl mb-3">Client Questionnaires</h3>
+                    <p class="text-zinc-400 leading-relaxed">
+                        Gather project requirements with custom questionnaires. Collect everything
+                        you need before kickoff.
+                    </p>
+                </div>
+
+                <!-- Feature 6: Multi-tenant -->
+                <div class="feature-card rounded-2xl p-8 group">
+                    <div class="icon-wrapper w-14 h-14 rounded-xl bg-surface-100 flex items-center justify-center mb-6">
+                        <svg class="w-7 h-7 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-display font-semibold text-xl mb-3">Multi-Agency</h3>
+                    <p class="text-zinc-400 leading-relaxed">
+                        Manage multiple agencies or brands from one account. Custom branding,
+                        separate teams, unified billing.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="relative py-32 px-6 overflow-hidden">
+        <!-- Background decoration -->
+        <div class="absolute inset-0 hero-gradient opacity-50"></div>
+
+        <div class="relative z-10 max-w-5xl mx-auto">
+            <!-- Section header -->
+            <div class="text-center mb-20 reveal">
+                <span class="inline-block px-4 py-1.5 rounded-full bg-accent/10 text-accent text-sm font-medium mb-6">
+                    How It Works
+                </span>
+                <h2 class="font-display font-bold text-4xl md:text-5xl lg:text-6xl tracking-tight mb-6">
+                    From lead to invoice<br>
+                    <span class="text-zinc-500">in four steps</span>
+                </h2>
+            </div>
+
+            <!-- Steps -->
+            <div class="relative reveal max-w-2xl mx-auto">
+                <!-- Connector line -->
+                <div class="absolute left-8 top-0 bottom-0 step-line hidden md:block"></div>
+
+                <div class="space-y-12 md:space-y-16" id="steps-container">
+                    <!-- Step 1 -->
+                    <div class="step-item flex gap-8 items-start" data-step="1">
+                        <div class="relative flex-shrink-0">
+                            <div class="step-number w-16 h-16 rounded-2xl flex items-center justify-center font-display font-bold text-xl text-white">
+                                1
+                            </div>
+                        </div>
+                        <div class="pt-2">
+                            <h3 class="font-display font-semibold text-2xl mb-3">Run a Consultation</h3>
+                            <p class="text-zinc-400 text-lg leading-relaxed max-w-xl">
+                                Use our AI-powered consultation form to understand client needs.
+                                Get intelligent analysis and project recommendations automatically.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="step-item flex gap-8 items-start" data-step="2">
+                        <div class="relative flex-shrink-0">
+                            <div class="step-number w-16 h-16 rounded-2xl flex items-center justify-center font-display font-bold text-xl text-white">
+                                2
+                            </div>
+                        </div>
+                        <div class="pt-2">
+                            <h3 class="font-display font-semibold text-2xl mb-3">Send a Proposal</h3>
+                            <p class="text-zinc-400 text-lg leading-relaxed max-w-xl">
+                                Generate a beautiful, branded proposal in minutes. Include pricing,
+                                timeline, and scope — all customizable to your workflow.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="step-item flex gap-8 items-start" data-step="3">
+                        <div class="relative flex-shrink-0">
+                            <div class="step-number w-16 h-16 rounded-2xl flex items-center justify-center font-display font-bold text-xl text-white">
+                                3
+                            </div>
+                        </div>
+                        <div class="pt-2">
+                            <h3 class="font-display font-semibold text-2xl mb-3">Sign the Contract</h3>
+                            <p class="text-zinc-400 text-lg leading-relaxed max-w-xl">
+                                Convert accepted proposals into contracts with one click.
+                                Clients sign digitally — no printing, scanning, or delays.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="step-item flex gap-8 items-start" data-step="4">
+                        <div class="relative flex-shrink-0">
+                            <div class="step-number w-16 h-16 rounded-2xl flex items-center justify-center font-display font-bold text-xl text-white">
+                                4
+                            </div>
+                        </div>
+                        <div class="pt-2">
+                            <h3 class="font-display font-semibold text-2xl mb-3">Get Paid</h3>
+                            <p class="text-zinc-400 text-lg leading-relaxed max-w-xl">
+                                Send professional invoices with Stripe payment links.
+                                Automatic reminders, payment tracking, and reporting built-in.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="relative py-32 px-6">
+        <div class="max-w-4xl mx-auto">
+            <div class="relative rounded-3xl overflow-hidden reveal">
+                <!-- Background -->
+                <div class="absolute inset-0 bg-gradient-to-br from-accent/20 via-surface-50 to-surface-50"></div>
+                <div class="absolute inset-0 noise-overlay"></div>
+
+                <!-- Decorative orbs -->
+                <div class="absolute -top-20 -right-20 w-64 h-64 bg-accent/30 rounded-full blur-[100px]"></div>
+                <div class="absolute -bottom-20 -left-20 w-48 h-48 bg-accent/20 rounded-full blur-[80px]"></div>
+
+                <div class="relative z-10 px-8 py-16 md:px-16 md:py-24 text-center">
+                    <h2 class="font-display font-bold text-3xl md:text-5xl tracking-tight mb-6">
+                        Ready to transform<br>your agency workflow?
+                    </h2>
+                    <p class="text-lg text-zinc-400 max-w-xl mx-auto mb-10">
+                        Join hundreds of agencies who've streamlined their client process.
+                        Start your free trial today — no credit card required.
+                    </p>
+                    <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                        <a href="https://app.webkit.au" class="btn-primary px-10 py-4 rounded-full text-base font-semibold">
+                            <span class="flex items-center gap-2">
+                                Get Started Free
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                                </svg>
+                            </span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-surface-200 py-12 px-6">
+        <div class="max-w-7xl mx-auto">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-7 h-7 bg-accent rounded-lg flex items-center justify-center">
+                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
+                    <span class="font-display font-bold text-lg">Webkit</span>
+                </div>
+                <div class="flex items-center gap-8 text-sm text-zinc-500">
+                    <a href="#features" class="hover:text-white transition-colors">Features</a>
+                    <a href="#how-it-works" class="hover:text-white transition-colors">How It Works</a>
+                    <a href="https://app.webkit.au" class="hover:text-white transition-colors">Login</a>
+                </div>
+                <p class="text-sm text-zinc-600">
+                    &copy; 2026 Webkit. All rights reserved.
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scroll reveal script -->
+    <script>
+        // Intersection Observer for scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('active');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // Progressive steps scroll animation
+        const stepItems = document.querySelectorAll('.step-item');
+        const stepsSection = document.getElementById('how-it-works');
+        let currentHighestStep = 0;
+        let sectionInView = false;
+
+        function updateSteps(targetStep) {
+            stepItems.forEach((item, index) => {
+                const stepNum = index + 1;
+                const stepNumber = item.querySelector('.step-number');
+
+                // Remove current class from all
+                item.classList.remove('current');
+
+                if (stepNum <= targetStep) {
+                    // Highlight this step and all previous
+                    item.classList.add('highlighted');
+                    stepNumber.classList.add('highlighted');
+
+                    // Mark the current (latest) step
+                    if (stepNum === targetStep) {
+                        item.classList.add('current');
+                    }
+                } else {
+                    // Unhighlight steps after target
+                    item.classList.remove('highlighted');
+                    stepNumber.classList.remove('highlighted');
+                }
+            });
+        }
+
+        // Watch the entire section to know when we're in/out of it
+        const sectionObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                sectionInView = entry.isIntersecting;
+
+                if (entry.isIntersecting) {
+                    // Entering section - ensure at least step 1 is highlighted
+                    if (currentHighestStep === 0) {
+                        currentHighestStep = 1;
+                        updateSteps(1);
+                    }
+                } else {
+                    // Leaving section completely
+                    const rect = entry.boundingClientRect;
+                    if (rect.top > 0) {
+                        // Scrolled up past section - reset
+                        currentHighestStep = 0;
+                        updateSteps(0);
+                    }
+                    // If rect.top < 0, we scrolled down past section - keep all highlighted
+                }
+            });
+        }, { threshold: 0, rootMargin: '0px 0px -10% 0px' });
+
+        if (stepsSection) sectionObserver.observe(stepsSection);
+
+        // Observer to detect when each step enters viewport center
+        const stepObserverOptions = {
+            threshold: [0, 0.2, 0.5],
+            rootMargin: '-25% 0px -35% 0px'
+        };
+
+        const stepObserver = new IntersectionObserver((entries) => {
+            if (!sectionInView) return; // Don't process if section not in view
+
+            entries.forEach(entry => {
+                const stepNum = parseInt(entry.target.dataset.step);
+
+                if (entry.isIntersecting && entry.intersectionRatio >= 0.2) {
+                    // Step is entering center zone - highlight up to this step
+                    if (stepNum >= currentHighestStep) {
+                        currentHighestStep = stepNum;
+                        updateSteps(currentHighestStep);
+                    }
+                } else if (!entry.isIntersecting && stepNum > 1) {
+                    // Step is leaving center zone
+                    const rect = entry.boundingClientRect;
+
+                    // If step is below viewport center (scrolling back up)
+                    if (rect.top > window.innerHeight * 0.4 && stepNum <= currentHighestStep) {
+                        currentHighestStep = stepNum - 1;
+                        updateSteps(currentHighestStep);
+                    }
+                }
+            });
+        }, stepObserverOptions);
+
+        stepItems.forEach(step => stepObserver.observe(step));
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+package login
+
+import (
+	"service-admin/config"
+	"service-admin/web"
+)
+
+templ Phone(cfg *config.Config) {
+	@web.App(cfg) {
+		<main class="flex place-items-center h-full">
+			<form
+				method="POST"
+				action={ templ.SafeURL(cfg.CoreURL + "/login-phone") }
+				class="flex flex-col w-full max-w-sm p-4 mx-auto"
+			>
+				<input type="hidden" name="return_url" value={ cfg.AdminURL }/>
+				<h1 class="mb-4 text-center text-lg font-semibold">Add your phone number for 2FA</h1>
+				<label class="floating-label">
+					<span>Your Phone Number</span>
+					<input
+						type="text"
+						name="phone"
+						placeholder="+1234567890"
+						required
+						pattern="^\+[1-9]\d{6,14}$"
+						class="input validator w-full"
+					/>
+					<div class="validator-hint">Enter valid phone number (e.g. +1234567890)</div>
+				</label>
+				<button type="submit" class="btn btn-primary btn-soft mt-2 w-full">
+					Send Code
+				</button>
+			</form>
+		</main>
+	}
+}

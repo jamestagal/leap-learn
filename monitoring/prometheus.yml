@@ -1,0 +1,5 @@
+global:
+  scrape_interval: 15s
+
+# All metrics are pushed via remote write from Alloy
+scrape_configs: []

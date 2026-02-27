@@ -1,0 +1,177 @@
+name: Deploy to Production
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Build and push Docker images to GitHub Container Registry
+  build-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - service: service-core
+            context: app
+            dockerfile: app/service-core/Dockerfile
+            image: service-core-r
+          - service: service-admin
+            context: app
+            dockerfile: app/service-admin/Dockerfile
+            image: service-admin-r
+          - service: content-service
+            context: app
+            dockerfile: app/content-service/Dockerfile
+            image: content-service-r
+          - service: service-client
+            context: service-client
+            dockerfile: service-client/Dockerfile
+            image: service-client-r
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create key files (Go services)
+        if: matrix.service != 'service-client'
+        run: |
+          echo "${{ secrets.PRIVATE_KEY_PEM }}" > app/${{ matrix.service }}/private.pem
+          echo "${{ secrets.PUBLIC_KEY_PEM }}" > app/${{ matrix.service }}/public.pem
+
+      - name: Create key files (SvelteKit)
+        if: matrix.service == 'service-client'
+        run: |
+          echo "${{ secrets.PUBLIC_KEY_PEM }}" > service-client/public.pem
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.image }}:latest
+          no-cache: true
+
+      - name: Clean up key files (Go services)
+        if: always() && matrix.service != 'service-client'
+        run: |
+          rm -f app/${{ matrix.service }}/private.pem
+          rm -f app/${{ matrix.service }}/public.pem
+
+      - name: Clean up key files (SvelteKit)
+        if: always() && matrix.service == 'service-client'
+        run: |
+          rm -f service-client/public.pem
+
+  # Deploy to Hostinger VPS
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-images
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync docker-compose.production.yml to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          source: "docker-compose.production.yml"
+          target: "/opt/webkit/"
+          overwrite: true
+          timeout: 120s
+
+      - name: Sync backup script to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          source: "scripts/backup-db.sh"
+          target: "/opt/webkit/"
+          overwrite: true
+          timeout: 120s
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          script: |
+            cd /opt/webkit
+
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull latest images
+            docker compose -f docker-compose.production.yml pull
+
+            # Rolling restart: update each service one at a time
+            # Core API first (other services depend on it)
+            docker compose -f docker-compose.production.yml up -d --no-deps core
+            sleep 10
+            curl -f http://localhost:4001/health || echo "Core health check pending"
+
+            # Admin service
+            docker compose -f docker-compose.production.yml up -d --no-deps admin
+            sleep 10
+            curl -f http://localhost:3001/ready || echo "Admin health check pending"
+
+            # Content Intelligence service
+            docker compose -f docker-compose.production.yml up -d --no-deps content
+            sleep 10
+            curl -f http://localhost:5001/health || echo "Content health check pending"
+
+            # Client service
+            docker compose -f docker-compose.production.yml up -d --no-deps client
+            sleep 10
+            curl -f http://localhost:3000 || echo "Client health check pending"
+
+            # Ensure backup script is executable
+            chmod +x /opt/webkit/scripts/backup-db.sh
+
+            # Clean up old images
+            docker image prune -f
+
+            # Show status
+            docker compose -f docker-compose.production.yml ps
+
+      - name: Health check
+        run: |
+          echo "Waiting for services to stabilize..."
+          sleep 15
+          curl -f --retry 3 --retry-delay 5 https://api.webkit.au/health || echo "Health check pending - services may still be starting"
+          curl -f --retry 3 --retry-delay 5 https://app.webkit.au || echo "Client health check pending"
+
+      - name: Verify backup cron
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          script: |
+            crontab -l 2>/dev/null | grep -q backup-db.sh && echo "Backup cron: OK" || echo "WARNING: Backup cron not configured - see docs/ops/backup-setup.md"

@@ -1,0 +1,7 @@
+################################################################################
+# Victoria Logs Single configuration
+################################################################################
+
+# Uncomment if not using otel collector for logs
+# vector:
+#   enabled: true

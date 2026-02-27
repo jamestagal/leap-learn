@@ -1,0 +1,21 @@
+package pages
+
+import "service-admin/web"
+import "service-admin/config"
+
+templ ErrorPage(cfg *config.Config, code string, message string) {
+	@web.App(cfg) {
+		<main class="grid h-full place-content-center bg-base-300 px-4">
+			<h1 class="uppercase tracking-widest text-base-content">{ code } | { message }</h1>
+			<div class="divider"></div>
+			<div class="flex flex-row justify-center gap-4">
+				<a href="/" hx-boost="false" class="btn btn-soft flex-1 whitespace-nowrap">
+					Go back
+				</a>
+				<a href="mailto:admin@gofast.live" class="btn btn-neutral flex-1 whitespace-nowrap">
+					Contact Us
+				</a>
+			</div>
+		</main>
+	}
+}

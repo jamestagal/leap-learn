@@ -1,0 +1,47 @@
+/grafana/data
+/kube/gcp-sa-*.json
+*.pem
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker volumes
+docker-volumes/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Agent/AI tooling
+.agent-os/
+
+# Node modules
+node_modules/
+
+# Build artifacts
+dist/
+build/
+tmp/
+
+# Go binaries
+app/server
+app/content-service/server
+app/service-core/service-core
+app/service-core/storage/atlas
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,1121 @@
+openapi: 3.0.3
+info:
+  title: Consultation Domain API
+  description: |
+    REST API for managing client consultation data within the GoFast microservices application.
+
+    This API provides structured data capture for sales consultations, enabling sales professionals
+    to systematically collect client information, pain points, goals, and project requirements
+    through a standardized consultation process.
+
+    ## Features
+    - Full CRUD operations for consultation management
+    - Draft/auto-save functionality for progressive data capture
+    - Version tracking for consultation changes
+    - Comprehensive data validation and error handling
+    - Authentication and authorization integration
+
+    ## Data Structure
+    Consultations are organized into four main sections:
+    1. **Contact Information** - Business details and contact data
+    2. **Business Context** - Industry, team size, current technology stack
+    3. **Pain Points & Challenges** - Current problems and urgency assessment
+    4. **Goals & Objectives** - Business goals, timeline, and budget considerations
+
+  version: 1.0.0
+  contact:
+    name: GoFast Development Team
+    email: dev@gofast.live
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:4001/api/v1
+    description: Development server
+  - url: https://api.gofast.live/v1
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /consultations:
+    get:
+      summary: List consultations
+      description: |
+        Retrieve a paginated list of consultations with optional filtering and sorting.
+        Results are filtered to show only consultations owned by the authenticated user.
+      operationId: listConsultations
+      tags:
+        - Consultations
+      parameters:
+        - name: status
+          in: query
+          description: Filter by consultation status
+          required: false
+          schema:
+            type: string
+            enum: [draft, completed, archived]
+        - name: industry
+          in: query
+          description: Filter by business industry
+          required: false
+          schema:
+            type: string
+        - name: urgency
+          in: query
+          description: Filter by urgency level
+          required: false
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sort
+          in: query
+          description: Field to sort by
+          required: false
+          schema:
+            type: string
+            enum: [created_at, updated_at, business_name]
+            default: created_at
+        - name: order
+          in: query
+          description: Sort order
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: search
+          in: query
+          description: Search in business name and contact person
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved consultations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create consultation
+      description: |
+        Create a new consultation record. All fields are optional to support progressive data entry.
+        The consultation starts with 'draft' status and completion percentage is automatically calculated.
+      operationId: createConsultation
+      tags:
+        - Consultations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConsultationRequest'
+      responses:
+        '201':
+          description: Consultation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /consultations/{id}:
+    get:
+      summary: Get consultation
+      description: Retrieve detailed information for a specific consultation
+      operationId: getConsultation
+      tags:
+        - Consultations
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successfully retrieved consultation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update consultation
+      description: |
+        Update an existing consultation. Supports partial updates - only provided fields will be updated.
+        Version tracking is automatically handled, and completion percentage is recalculated.
+      operationId: updateConsultation
+      tags:
+        - Consultations
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConsultationRequest'
+      responses:
+        '200':
+          description: Consultation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete consultation
+      description: |
+        Permanently delete a consultation record. This action cannot be undone.
+        All associated drafts and version history will also be deleted.
+      operationId: deleteConsultation
+      tags:
+        - Consultations
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Consultation deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /consultations/{id}/drafts:
+    get:
+      summary: Get consultation draft
+      description: Retrieve the latest draft for a consultation if one exists
+      operationId: getConsultationDraft
+      tags:
+        - Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successfully retrieved draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationDraftResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Save consultation draft
+      description: |
+        Save consultation data as a draft. This supports auto-save functionality
+        during data entry. Drafts can be promoted to full consultations later.
+      operationId: saveConsultationDraft
+      tags:
+        - Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveDraftRequest'
+      responses:
+        '201':
+          description: Draft saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationDraftResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update consultation draft
+      description: Update an existing draft with new data
+      operationId: updateConsultationDraft
+      tags:
+        - Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDraftRequest'
+      responses:
+        '200':
+          description: Draft updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationDraftResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete consultation draft
+      description: Delete the draft for a consultation
+      operationId: deleteConsultationDraft
+      tags:
+        - Drafts
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Draft deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /consultations/{id}/versions:
+    get:
+      summary: Get version history
+      description: |
+        Retrieve the version history for a consultation. Versions are created automatically
+        when significant changes are made to a consultation.
+      operationId: getConsultationVersions
+      tags:
+        - Versions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Successfully retrieved version history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionHistoryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /consultations/{id}/versions/{versionNumber}:
+    get:
+      summary: Get specific version
+      description: Retrieve the consultation data as it existed at a specific version
+      operationId: getConsultationVersion
+      tags:
+        - Versions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Consultation UUID
+          schema:
+            type: string
+            format: uuid
+        - name: versionNumber
+          in: path
+          required: true
+          description: Version number
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successfully retrieved version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationVersionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from the authentication service
+
+  schemas:
+    ContactInfo:
+      type: object
+      description: Business contact information
+      properties:
+        business_name:
+          type: string
+          example: "Acme Corporation"
+          description: Legal business name
+        contact_person:
+          type: string
+          example: "John Doe"
+          description: Primary contact person
+        email:
+          type: string
+          format: email
+          example: "john.doe@acme.com"
+          description: Primary email address
+        phone:
+          type: string
+          example: "+1-555-123-4567"
+          description: Primary phone number
+        website:
+          type: string
+          format: uri
+          example: "https://www.acme.com"
+          description: Business website URL
+        social_media:
+          type: object
+          description: Social media presence
+          properties:
+            linkedin:
+              type: string
+              format: uri
+              example: "https://linkedin.com/company/acme"
+            facebook:
+              type: string
+              format: uri
+              example: "https://facebook.com/acme"
+            instagram:
+              type: string
+              format: uri
+              example: "https://instagram.com/acme"
+          additionalProperties: true
+
+    BusinessContext:
+      type: object
+      description: Business context and operational details
+      properties:
+        industry:
+          type: string
+          example: "Technology"
+          description: Primary business industry
+        business_type:
+          type: string
+          example: "SaaS"
+          description: Type of business or business model
+        team_size:
+          type: integer
+          minimum: 1
+          example: 25
+          description: Number of employees
+        current_platform:
+          type: string
+          example: "WordPress"
+          description: Current technology platform or CMS
+        digital_presence:
+          type: array
+          items:
+            type: string
+          example: ["website", "social-media", "mobile-app"]
+          description: Current digital presence channels
+        marketing_channels:
+          type: array
+          items:
+            type: string
+          example: ["seo", "paid-ads", "social", "email"]
+          description: Current marketing and acquisition channels
+
+    PainPoints:
+      type: object
+      description: Current challenges and pain points
+      properties:
+        primary_challenges:
+          type: array
+          items:
+            type: string
+          example: ["Slow website performance", "Poor mobile experience"]
+          description: Main business challenges identified
+        technical_issues:
+          type: array
+          items:
+            type: string
+          example: ["Outdated CMS", "No mobile optimization"]
+          description: Specific technical problems
+        urgency_level:
+          type: string
+          enum: [low, medium, high, critical]
+          example: "high"
+          description: How urgent these issues are to address
+        impact_assessment:
+          type: string
+          example: "Losing 20% of potential customers due to mobile issues"
+          description: Business impact of current problems
+        current_solution_gaps:
+          type: array
+          items:
+            type: string
+          example: ["No analytics", "Manual processes"]
+          description: Gaps in current solutions
+
+    Timeline:
+      type: object
+      description: Project timeline information
+      properties:
+        desired_start:
+          type: string
+          format: date
+          example: "2025-10-01"
+          description: Desired project start date
+        target_completion:
+          type: string
+          format: date
+          example: "2025-12-31"
+          description: Target completion date
+        milestones:
+          type: array
+          items:
+            type: string
+          example: ["Design approval", "Development complete", "Launch"]
+          description: Key project milestones
+
+    GoalsObjectives:
+      type: object
+      description: Business goals and project objectives
+      properties:
+        primary_goals:
+          type: array
+          items:
+            type: string
+          example: ["Increase online sales", "Improve user experience"]
+          description: Primary business goals
+        secondary_goals:
+          type: array
+          items:
+            type: string
+          example: ["Better SEO", "Analytics implementation"]
+          description: Secondary objectives
+        success_metrics:
+          type: array
+          items:
+            type: string
+          example: ["30% increase in conversions", "50% faster page load"]
+          description: How success will be measured
+        kpis:
+          type: array
+          items:
+            type: string
+          example: ["Conversion rate", "Page load time", "Mobile score"]
+          description: Key performance indicators to track
+        timeline:
+          $ref: '#/components/schemas/Timeline'
+        budget_range:
+          type: string
+          example: "10k-25k"
+          description: Budget range for the project
+        budget_constraints:
+          type: array
+          items:
+            type: string
+          example: ["Limited upfront payment", "Phased implementation"]
+          description: Budget-related constraints or requirements
+
+    CreateConsultationRequest:
+      type: object
+      description: Request body for creating a new consultation
+      properties:
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+
+    UpdateConsultationRequest:
+      type: object
+      description: Request body for updating a consultation (all fields optional)
+      properties:
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+        status:
+          type: string
+          enum: [draft, completed, archived]
+          description: Update consultation status
+
+    ConsultationResponse:
+      type: object
+      description: Full consultation details
+      required:
+        - id
+        - user_id
+        - status
+        - completion_percentage
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        user_id:
+          type: string
+          format: uuid
+          example: "456e7890-e89b-12d3-a456-426614174000"
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+        status:
+          type: string
+          enum: [draft, completed, archived]
+          example: "draft"
+        completion_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 75
+          description: Automatically calculated completion percentage
+        created_at:
+          type: string
+          format: date-time
+          example: "2025-09-22T10:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2025-09-22T12:00:00Z"
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2025-09-22T14:00:00Z"
+          description: Timestamp when consultation was marked complete
+
+    ConsultationSummary:
+      type: object
+      description: Summary information for consultation lists
+      required:
+        - id
+        - user_id
+        - status
+        - completion_percentage
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        business_name:
+          type: string
+          example: "Acme Corporation"
+        contact_person:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@acme.com"
+        industry:
+          type: string
+          example: "Technology"
+        status:
+          type: string
+          enum: [draft, completed, archived]
+        completion_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ConsultationListResponse:
+      type: object
+      description: Paginated list of consultations
+      required:
+        - consultations
+        - pagination
+      properties:
+        consultations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsultationSummary'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    PaginationInfo:
+      type: object
+      description: Pagination metadata
+      required:
+        - page
+        - limit
+        - total
+        - total_pages
+        - has_next
+        - has_prev
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        limit:
+          type: integer
+          minimum: 1
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          example: 45
+        total_pages:
+          type: integer
+          minimum: 0
+          example: 3
+        has_next:
+          type: boolean
+          example: true
+        has_prev:
+          type: boolean
+          example: false
+
+    SaveDraftRequest:
+      type: object
+      description: Request body for saving a consultation draft
+      properties:
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+        auto_saved:
+          type: boolean
+          example: true
+          description: Whether this was an automatic save
+        draft_notes:
+          type: string
+          example: "Work in progress notes"
+          description: Optional notes about the draft
+
+    UpdateDraftRequest:
+      type: object
+      description: Request body for updating a consultation draft
+      properties:
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+        auto_saved:
+          type: boolean
+          description: Whether this was an automatic save
+        draft_notes:
+          type: string
+          description: Optional notes about the draft
+
+    ConsultationDraftResponse:
+      type: object
+      description: Consultation draft data
+      required:
+        - id
+        - consultation_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        consultation_id:
+          type: string
+          format: uuid
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+        auto_saved:
+          type: boolean
+        draft_notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VersionSummary:
+      type: object
+      description: Summary of a consultation version
+      required:
+        - id
+        - consultation_id
+        - version_number
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        consultation_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+          minimum: 1
+          example: 3
+        change_summary:
+          type: string
+          example: "Updated goals and timeline"
+        changed_fields:
+          type: array
+          items:
+            type: string
+          example: ["goals_objectives.timeline", "status"]
+        created_at:
+          type: string
+          format: date-time
+
+    VersionHistoryResponse:
+      type: object
+      description: Paginated version history
+      required:
+        - versions
+        - pagination
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionSummary'
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+
+    ConsultationVersionResponse:
+      type: object
+      description: Full consultation data at a specific version
+      required:
+        - id
+        - consultation_id
+        - version_number
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        consultation_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+          minimum: 1
+        contact_info:
+          $ref: '#/components/schemas/ContactInfo'
+        business_context:
+          $ref: '#/components/schemas/BusinessContext'
+        pain_points:
+          $ref: '#/components/schemas/PainPoints'
+        goals_objectives:
+          $ref: '#/components/schemas/GoalsObjectives'
+        status:
+          type: string
+          enum: [draft, completed, archived]
+        completion_percentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        change_summary:
+          type: string
+        changed_fields:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      description: Standard error response
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: "VALIDATION_ERROR"
+          description: Error code
+        message:
+          type: string
+          example: "Invalid input data"
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          example:
+            contact_info.email: "Invalid email format"
+            pain_points.urgency_level: "Must be one of: low, medium, high, critical"
+          description: Detailed validation errors or additional context
+        request_id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+          description: Unique request identifier for debugging
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters or malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "BAD_REQUEST"
+            message: "Invalid request parameters"
+
+    Unauthorized:
+      description: Unauthorized - missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "UNAUTHORIZED"
+            message: "Invalid or missing authentication token"
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "FORBIDDEN"
+            message: "You don't have permission to access this consultation"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "NOT_FOUND"
+            message: "Consultation not found"
+
+    Conflict:
+      description: Conflict - resource has been modified
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "CONFLICT"
+            message: "Consultation has been modified by another user"
+            details:
+              current_version: 3
+              attempted_version: 2
+
+    ValidationError:
+      description: Unprocessable entity - validation errors
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "VALIDATION_ERROR"
+            message: "Invalid input data"
+            details:
+              contact_info.email: "Invalid email format"
+              pain_points.urgency_level: "Must be one of: low, medium, high, critical"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "INTERNAL_ERROR"
+            message: "An unexpected error occurred"
+            request_id: "123e4567-e89b-12d3-a456-426614174000"
+
+tags:
+  - name: Consultations
+    description: |
+      Core consultation management operations including creation, retrieval,
+      updating, and deletion of consultation records.
+  - name: Drafts
+    description: |
+      Draft management for auto-save functionality and progressive data capture.
+      Allows saving partial consultation data during the consultation process.
+  - name: Versions
+    description: |
+      Version history and tracking for consultations. Provides audit trail
+      and rollback capabilities for consultation changes.

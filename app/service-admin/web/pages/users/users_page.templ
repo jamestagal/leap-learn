@@ -1,0 +1,123 @@
+package users
+
+import (
+	"fmt"
+	pb "service-admin/proto"
+	"service-admin/config"
+	"service-admin/web/pages"
+	"strings"
+)
+
+type Props struct {
+	Users []*pb.User
+}
+
+var columns = []string{"ID", "Created", "Updated", "Email", "Phone", "Access", "API Key", ""}
+
+templ UsersPage(cfg *config.Config, props Props, isHTMX bool) {
+	if !isHTMX {
+		@pages.Layout(cfg) {
+			@UsersContent(cfg, props)
+		}
+	} else {
+		@UsersContent(cfg, props)
+	}
+}
+
+templ UsersContent(cfg *config.Config, props Props) {
+	<h1 class="text-4xl font-bold mb-10">Users</h1>
+	<section>
+		<div class="w-fit mb-6">
+			@UserAccessForm(cfg)
+		</div>
+		<div class="mt-8 flow-root">
+			<div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+				<div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+					<div class="overflow-hidden ring-1 shadow ring-neutral-200/10 sm:rounded-lg">
+						<table class="min-w-full divide-y divide-neutral-600">
+							<thead class="bg-base-300">
+								<tr>
+									for _, column := range columns {
+										<th class="py-3.5 pr-3 pl-4 text-left text-sm font-semibold text-base-content sm:pl-6">
+											{ column }
+										</th>
+									}
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-neutral-600">
+								for _, user := range props.Users {
+									{{ userID := strings.ReplaceAll(user.GetId(), "-", "_") }}
+									<tr class="text-nowrap">
+										<td class="px-3 py-3.5 text-sm text-base-content">{ user.Id }</td>
+										<td class="px-3 py-3.5 text-sm text-base-content">{ user.Created }</td>
+										<td class="px-3 py-3.5 text-sm text-base-content">{ user.Updated }</td>
+										<td class="px-3 py-3.5 text-sm text-base-content">{ user.Email }</td>
+										<td class="px-3 py-3.5 text-sm text-base-content">{ user.Phone }</td>
+										<td class="px-3 py-3.5 text-sm text-base-content">{ fmt.Sprintf("%v", user.Access) }</td>
+										<td class="px-3 py-3.5 text-sm text-base-content font-mono text-xs">{ user.ApiKey }</td>
+										<td class="relative px-3 py-3.5 text-sm text-base-content">
+											<div
+												x-data="{ 
+                                                    open: false,
+                                                    close($event) {
+                                                        this.open = false;
+                                                        drawer = document.getElementById('edit_user_' + $event.detail.id.replace(/-/g, '_'));
+                                                        drawer.close();
+                                                    }
+                                                }"
+												x-on:keydown.escape="open = false"
+												x-on:user-saved.window="close($event)"
+											>
+												<button
+													type="button"
+													class="btn btn-soft btn-primary"
+													onclick={ templ.ComponentScript{Call: "edit_user_" + userID + ".showModal()"} }
+													@click="open = true"
+												>
+													Edit
+												</button>
+												<dialog id={ "edit_user_" + userID } class="modal modal-end">
+													<div class="modal-box" x-trap="open">
+														<h3 class="text-lg font-bold mb-10">
+															Edit User
+														</h3>
+														@UserForm("edit-user-"+user.GetId(), "PUT", user)
+														<div class="modal-action">
+															<form method="dialog">
+																<button
+																	@click="open = false"
+																	class="btn"
+																>
+																	Cancel
+																</button>
+															</form>
+															<button
+																type="submit"
+																class="btn btn-primary btn-soft"
+																form={ "edit-user-" + user.GetId() }
+															>
+																<span class="loading loading-spinner htmx-indicator"></span>
+																Save User
+															</button>
+														</div>
+													</div>
+													<form method="dialog" class="modal-backdrop">
+														<button
+															@click="open = false"
+														>
+															close
+														</button>
+													</form>
+												</dialog>
+											</div>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+		</div>
+	</section>
+}

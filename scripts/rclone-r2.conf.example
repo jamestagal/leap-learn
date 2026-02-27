@@ -1,0 +1,13 @@
+# Rclone config for Cloudflare R2
+# Copy to /opt/webkit/.rclone.conf on production VPS and fill in credentials
+#
+# To create the R2 bucket:
+#   Use Cloudflare dashboard or: rclone mkdir r2:webkit-backups --config /opt/webkit/.rclone.conf
+
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = YOUR_R2_ACCESS_KEY
+secret_access_key = YOUR_R2_SECRET_KEY
+endpoint = YOUR_R2_ENDPOINT
+acl = private

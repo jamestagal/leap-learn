@@ -1,0 +1,48 @@
+################################################################################
+# Cloud Native PostgreSQL Cluster Configuration
+################################################################################
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  namespace: db
+spec:
+  instances: 3
+  storage:
+    size: 10Gi
+  # Comment the following lines to disable backup
+  backup:
+    barmanObjectStore:
+      serverName: ${BACKUP_NAME}
+      destinationPath: s3://${BACKUP_BUCKET}/
+      endpointURL: ${BACKUP_ENDPOINT}
+      wal:
+        compression: gzip
+        maxParallel: 8
+        encryption: AES256
+      s3Credentials:
+        accessKeyId:
+          name: backup-secrets
+          key: access_key_id
+        secretAccessKey:
+          name: backup-secrets
+          key: secret_access_key
+    retentionPolicy: "7d"
+    # Uncomment the following lines to enable recovery
+    # bootstrap:
+    #     recovery:
+    #       source: postgres-restore
+    # externalClusters: # used for recovery
+    #   - name: postgres-restore
+    #     barmanObjectStore:
+    #       serverName: postgres-backup # name of the backup file
+    #       destinationPath: s3://${BACKUP_BUCKET}/
+    #       endpointURL: ${BACKUP_ENDPOINT}
+    #       s3Credentials:
+    #         accessKeyId:
+    #           name: postgres-backup
+    #           key: ACCESS_KEY_ID
+    #         secretAccessKey:
+    #           name: postgres-backup
+    #           key: ACCESS_SECRET_KEY

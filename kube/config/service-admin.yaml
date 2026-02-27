@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-admin
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: service-admin
+  template:
+    metadata:
+      labels:
+        app: service-admin
+    spec:
+      shareProcessNamespace: true
+      containers:
+        - name: service-admin
+          image: ghcr.io/${GITHUB_REPO}/${ADMIN_IMAGE}:latest
+          imagePullPolicy: Always
+          ports:
+          - name: web
+            protocol: TCP
+            containerPort: 3001
+          - name: sse
+            protocol: TCP
+            containerPort: 3002
+          readinessProbe:
+            httpGet: 
+              port: web
+              path: /ready
+          livenessProbe:
+            httpGet:
+              port: web
+              path: /ready
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          env:
+            - { name: "LOG_LEVEL", value: "${LOG_LEVEL}" }
+            - { name: "HTTP_PORT", value: "3001" }
+            - { name: "SSE_PORT", value: "3002" }
+            - { name: "DOMAIN", value: "${DOMAIN}" }
+            - { name: "ADMIN_URL", value: "https://${ADMIN_URL}" }
+            - { name: "SSE_URL", value: "https://${ADMIN_URL}" }
+            - { name: "NATS_URL", value: "nats://${NATS_URL}" }
+            - { name: "CORE_URL", value: "https://${CORE_URL}" }
+            - { name: "CORE_URI", value: "service-core-sv:8443" }
+          resources:
+             requests:
+               memory: "256Mi"
+               cpu: "100m"
+             limits:
+               memory: "512Mi"
+               cpu: "500m"
+        # Comment if not using OpenTelemetry
+        - name: otel-go-auto-instrumentation
+          image: otel/autoinstrumentation-go:latest # Use a specific version in production
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: OTEL_GO_AUTO_TARGET_EXE
+              value: "/app"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_SERVICE_NAME
+              value: "service-admin"
+            - name: OTEL_LOG_LEVEL
+              value: "info"
+          securityContext:
+            runAsUser: 0
+            privileged: true
+          resources:
+             requests:
+               memory: "64Mi"
+               cpu: "50m"
+             limits:
+               memory: "256Mi"
+               cpu: "200m"
+      imagePullSecrets:
+        - name: regcred

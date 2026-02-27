@@ -1,0 +1,70 @@
+{
+  "project_name": "webkit",
+  "services": [
+    {
+      "name": "core",
+      "port": "4001"
+    },
+    {
+      "name": "admin",
+      "port": "3001"
+    },
+    {
+      "name": "client",
+      "port": "3000"
+    }
+  ],
+  "models": [
+    {
+      "name": "user",
+      "columns": [
+        {
+          "name": "email",
+          "type": "string"
+        },
+        {
+          "name": "phone",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "note",
+      "columns": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "content",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "consultation",
+      "columns": [
+        {
+          "name": "client_name",
+          "type": "string"
+        },
+        {
+          "name": "client_email",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "integrations": [
+    "stripe"
+  ],
+  "infra_populated": true
+}

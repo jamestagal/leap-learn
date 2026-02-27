@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-core
+  namespace: pr-${PR_NUMBER}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-core
+  template:
+    metadata:
+      labels:
+        app: service-core
+    spec:
+      containers:
+        - name: service-core
+          image: ${IMAGE_TAG}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4000
+              name: connect
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: connect
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: connect
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: ENV
+              value: "pr"
+            - name: LOG_LEVEL
+              value: "debug"
+            - name: SERVICE_NAME
+              value: "service-core"
+            - name: PORT
+              value: "4000"
+            - name: DOMAIN
+              value: ${DOMAIN}
+            - name: CORE_URL
+              value: "https://pr-${PR_NUMBER}-core.${DOMAIN}"
+            - name: CLIENT_URL
+              value: "https://pr-${PR_NUMBER}-${CONTEXT}.${WORKERS_SUBDOMAIN}.workers.dev"
+            - name: ALLOY_URL
+              value: ""
+            - name: CRON_TOKEN
+              value: "preview-cron-token-${PR_NUMBER}"
+            - name: POSTGRES_HOST
+              value: postgres.pr-${PR_NUMBER}.svc.cluster.local
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: database
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: google-oauth
+                  key: client_id
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: google-oauth
+                  key: client_secret
+            - name: OAUTH_REDIRECT_URI
+              value: "https://oauth-proxy.${DOMAIN}/callback"
+      imagePullSecrets:
+        - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-core
+  namespace: pr-${PR_NUMBER}
+spec:
+  selector:
+    app: service-core
+  ports:
+    - name: connect
+      port: 80
+      targetPort: connect

@@ -1,0 +1,133 @@
+groups:
+  - name: consultation.rules
+    interval: 30s
+    rules:
+      # High Error Rate Alert
+      - alert: ConsultationAPIHighErrorRate
+        expr: rate(http_requests_total{job="service-core",handler=~"/consultations.*",code!~"2.."}[5m]) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: consultation
+          component: api
+        annotations:
+          summary: "High error rate in Consultation API"
+          description: "Consultation API error rate is {{ $value }}% over the last 5 minutes, which is above the 5% threshold."
+          runbook_url: "https://docs.example.com/runbooks/consultation-api-errors"
+
+      # Slow Response Time Alert
+      - alert: ConsultationAPISlowResponse
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="service-core",handler=~"/consultations.*"}[5m])) by (le)) > 2
+        for: 3m
+        labels:
+          severity: warning
+          service: consultation
+          component: api
+        annotations:
+          summary: "Slow response times in Consultation API"
+          description: "95th percentile response time is {{ $value }}s, which is above the 2s threshold."
+          runbook_url: "https://docs.example.com/runbooks/consultation-api-performance"
+
+      # Database Connection Issues
+      - alert: ConsultationDatabaseConnections
+        expr: database_connections_active{service="consultation"} > 80
+        for: 1m
+        labels:
+          severity: critical
+          service: consultation
+          component: database
+        annotations:
+          summary: "High database connection usage for Consultation service"
+          description: "Database connections for consultation service: {{ $value }}, approaching pool limit."
+          runbook_url: "https://docs.example.com/runbooks/database-connections"
+
+      # Database Query Performance
+      - alert: ConsultationDatabaseSlowQueries
+        expr: histogram_quantile(0.95, sum(rate(database_query_duration_seconds_bucket{operation=~"consultation.*"}[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: consultation
+          component: database
+        annotations:
+          summary: "Slow database queries for Consultation operations"
+          description: "95th percentile query time: {{ $value }}s, which is above the 1s threshold."
+          runbook_url: "https://docs.example.com/runbooks/database-performance"
+
+      # Business Metrics Alerts
+      - alert: ConsultationCompletionRateLow
+        expr: (sum(consultation_total{status="completed"}) / sum(consultation_total)) * 100 < 20
+        for: 10m
+        labels:
+          severity: warning
+          service: consultation
+          component: business
+        annotations:
+          summary: "Low consultation completion rate"
+          description: "Consultation completion rate is {{ $value }}%, which is below the 20% threshold."
+          runbook_url: "https://docs.example.com/runbooks/business-metrics"
+
+      # Draft Auto-save Issues
+      - alert: ConsultationDraftSaveFailures
+        expr: rate(consultation_drafts_save_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: consultation
+          component: drafts
+        annotations:
+          summary: "High draft save failure rate"
+          description: "Draft save error rate: {{ $value }} errors/sec over the last 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/draft-management"
+
+      # Service Availability
+      - alert: ConsultationServiceDown
+        expr: up{job="service-core"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: consultation
+          component: service
+        annotations:
+          summary: "Consultation service is down"
+          description: "Consultation service has been down for more than 1 minute."
+          runbook_url: "https://docs.example.com/runbooks/service-recovery"
+
+      # Memory Usage
+      - alert: ConsultationServiceHighMemory
+        expr: process_resident_memory_bytes{job="service-core"} / 1024 / 1024 > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: consultation
+          component: resources
+        annotations:
+          summary: "High memory usage in Consultation service"
+          description: "Memory usage: {{ $value }}MB, which is above the 500MB threshold."
+          runbook_url: "https://docs.example.com/runbooks/resource-management"
+
+      # Request Volume Spike
+      - alert: ConsultationAPIRequestSpike
+        expr: rate(http_requests_total{job="service-core",handler=~"/consultations.*"}[5m]) > 100
+        for: 2m
+        labels:
+          severity: info
+          service: consultation
+          component: api
+        annotations:
+          summary: "High request volume to Consultation API"
+          description: "Request rate: {{ $value }} req/sec, which is unusually high."
+          runbook_url: "https://docs.example.com/runbooks/traffic-management"
+
+      # Disk Space
+      - alert: ConsultationDatabaseDiskSpace
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: consultation
+          component: storage
+        annotations:
+          summary: "Low disk space for database"
+          description: "Disk usage: {{ $value }}%, which is above the 85% threshold."
+          runbook_url: "https://docs.example.com/runbooks/disk-management"

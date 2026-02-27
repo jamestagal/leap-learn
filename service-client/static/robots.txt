@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /super-admin/
+Disallow: /login/verify
+Disallow: /login/phone
+
+Sitemap: https://app.webkit.au/sitemap.xml

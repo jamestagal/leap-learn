@@ -1,0 +1,13 @@
+# Build artifacts
+**/tmp/
+**/bin/
+**/__debug_*
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Air hot-reload temp
+service-core/tmp/
+service-admin/tmp/

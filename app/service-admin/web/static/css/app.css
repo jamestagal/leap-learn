@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@source "../../*.{html,js,templ}";
+@plugin "daisyui" {
+    themes: light --default, dark --prefersdark, dim;
+}
+
+@theme {
+  --font-poppins: Poppins, sans-serif;
+}
+
+[x-cloak] { display: none !important; }
+
+.htmx-request .icon {
+    display: none;
+}
+.htmx-indicator{
+    display:none;
+}
+.htmx-request .htmx-indicator{
+    display:inline;
+}
+.htmx-request.htmx-indicator{
+    display:inline;
+}

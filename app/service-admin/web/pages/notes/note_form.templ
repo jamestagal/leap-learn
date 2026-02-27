@@ -1,0 +1,123 @@
+package notes
+
+import pb "service-admin/proto"
+
+templ NoteForm(formId string, method string, note *pb.Note) {
+	<form
+		id={ formId }
+		method="post"
+		action="/notes"
+		hx-boost="true"
+		hx-swap="morph:innerHTML"
+		hx-target="#content"
+		class="grid grid-cols-4 w-full gap-4"
+	>
+		<input type="hidden" name="_method" value={ method }/>
+		<input name="id" type="hidden" value={ note.GetId() }/>
+		<label class="floating-label col-span-2">
+			<span>Title</span>
+			<input
+				name="title"
+				type="text"
+				placeholder="Title"
+				class="input validator w-full"
+				required
+				value={ note.GetTitle() }
+			/>
+			<div class="validator-hint">
+				Enter valid title
+			</div>
+		</label>
+		<label class="floating-label col-span-2">
+			<span>Category</span>
+			<select
+				name="category"
+				class="input validator w-full"
+				required
+			>
+				<option
+					value=""
+					disabled
+					if note.GetCategory() == "" {
+						selected
+					}
+				>
+					Select a category
+				</option>
+				<option
+					value="work"
+					if note.GetCategory() == "work" {
+						selected
+					}
+				>
+					Work
+				</option>
+				<option
+					value="personal"
+					if note.GetCategory() == "personal" {
+						selected
+					}
+				>
+					Personal
+				</option>
+				<option
+					value="other"
+					if note.GetCategory() == "other" {
+						selected
+					}
+				>
+					Other
+				</option>
+			</select>
+			<div class="validator-hint">
+				Select a category
+			</div>
+		</label>
+		<label class="floating-label col-span-4">
+			<span>Content</span>
+			<textarea
+				name="content"
+				placeholder="Content"
+				class="textarea validator w-full"
+				required
+				rows="6"
+			>
+				{ note.GetContent() }
+			</textarea>
+			<div class="validator-hint">
+				Enter valid content
+			</div>
+		</label>
+		<div
+			class="col-span-4 mb-4"
+			x-data={ templ.JSONString(note) }
+		>
+			<div
+				role="alert"
+				class="alert alert-error"
+				sse-swap={ "error-" + note.GetId() }
+				hx-target={ "#error-" + note.GetId() }
+				x-data="{
+                    showError: false,
+                    sseEvent(event) {
+                        const detail = event.detail;
+                        if (detail.type === 'error-' + id) {
+                            $nextTick(() => { 
+                                this.showError = true;
+                            });
+                        }
+                    }
+                }"
+				x-on:htmx:sse-before-message.window="sseEvent($event)"
+				x-cloak
+				x-show="showError"
+				x-transition
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 shrink-0 stroke-current" fill="none" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+				</svg>
+				<span id={ "error-" + note.GetId() }></span>
+			</div>
+		</div>
+	</form>
+}

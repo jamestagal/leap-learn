@@ -1,0 +1,23 @@
+################################################################################
+# Grafana Tempo configuration
+################################################################################
+
+replicas: 2
+
+tempo:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: "http://vms-victoria-metrics-single-server:8428/api/v1/write"
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics

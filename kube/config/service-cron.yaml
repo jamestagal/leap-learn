@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trigger-delete-tokens
+spec:
+  schedule: "0 0 * * *"  # Daily at midnight
+  # schedule: "*/1 * * * *"  # Every minute for testing
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: delete-tokens
+            image: curlimages/curl:latest
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              curl -f -S -X GET \
+                 -H "X-Api-Key: $TASK_TOKEN" \
+                 http://service-core-sv/tasks/delete-tokens
+            env:
+            - name: TASK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: task-token

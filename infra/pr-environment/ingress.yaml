@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: service-core
+  namespace: pr-${PR_NUMBER}
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - pr-${PR_NUMBER}-core.${DOMAIN}
+      secretName: pr-tls-cert
+  rules:
+    - host: pr-${PR_NUMBER}-core.${DOMAIN}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: service-core
+                port:
+                  name: connect

@@ -1,0 +1,97 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  fluentforward:
+    endpoint: 0.0.0.0:24224
+
+processors:
+  batch:
+  transform/fluent:
+    log_statements:
+      - context: log
+        statements:
+          - set(body, ParseJSON(body["log"])) where IsMap(body) and IsString(body["log"])
+          - set(body, ParseJSON(body)) where IsString(body)
+          - set(attributes["service.name"], body["service.name"]) where IsMap(body) and IsString(body["service.name"])
+          - set(attributes["service.name"], body["service_name"]) where IsMap(body) and IsString(body["service_name"])
+          - set(attributes["service_name"], attributes["service.name"]) where IsString(attributes["service.name"])
+          - set(attributes["service_name"], resource.attributes["service.name"]) where attributes["service_name"] == nil and resource.attributes["service.name"] != nil
+          - set(attributes["trace_id"], body["trace_id"]) where IsMap(body) and IsString(body["trace_id"])
+          - set(attributes["span_id"], body["span_id"]) where IsMap(body) and IsString(body["span_id"])
+          - set(resource.attributes["service.name"], attributes["service.name"]) where IsString(attributes["service.name"])
+          - set(resource.attributes["service.name"], body["service.name"]) where IsMap(body) and IsString(body["service.name"])
+          - set(resource.attributes["service.name"], body["service_name"]) where IsMap(body) and IsString(body["service_name"])
+          - set(resource.attributes["service_name"], resource.attributes["service.name"]) where resource.attributes["service.name"] != nil
+
+connectors:
+  spanmetrics:
+    metrics_flush_interval: 60s
+    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    histogram:
+      explicit:
+        buckets: [100us, 1ms, 2ms, 6ms, 10ms, 100ms, 250ms, 500ms, 1s]
+    namespace: span.metrics
+    dimensions:
+      - name: rpc.system
+      - name: rpc.service
+      - name: rpc.method
+    dimensions_cache_size: 1000
+    exemplars:
+      enabled: true
+  servicegraph:
+    metrics_flush_interval: 60s
+    dimensions:
+      - rpc.system
+      - rpc.service
+      - rpc.method
+
+exporters:
+  # Traces
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    enable_open_metrics: true
+    resource_to_telemetry_conversion:
+      enabled: true
+  prometheusremotewrite/victoria:
+    endpoint: http://victoria-metrics:8428/api/v1/write
+
+  # Logs
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, spanmetrics, servicegraph]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheusremotewrite/victoria]
+    metrics/spanmetrics:
+      receivers: [spanmetrics]
+      processors: [batch]
+      exporters: [prometheus]
+    metrics/servicegraph:
+      receivers: [servicegraph]
+      processors: [batch]
+      exporters: [prometheus]
+    logs/otlp:
+      receivers: [otlp]
+      processors: [transform/fluent, batch]
+      exporters: [otlphttp/loki]
+    logs/fluent:
+      receivers: [fluentforward]
+      processors: [transform/fluent, batch]
+      exporters: [otlphttp/loki]

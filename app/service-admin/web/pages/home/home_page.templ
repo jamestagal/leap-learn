@@ -1,0 +1,38 @@
+package home
+
+import (
+	"service-admin/config"
+	"service-admin/web/pages"
+)
+
+templ HomePage(cfg *config.Config, isHTMX bool) {
+	if !isHTMX {
+		@pages.Layout(cfg) {
+			@HomeContent()
+		}
+	} else {
+		@HomeContent()
+	}
+}
+
+templ HomeContent() {
+	<section class="max-w-lg">
+		<h1 class="text-4xl font-bold mb-10">Dashboard</h1>
+		<p class="text-2xl font-bold">Welcome to the Admin Panel</p>
+		<p class="text-lg">Build using Go Templ + HTMX + Apline.js + Tailwind CSS</p>
+		<div class="mt-8">
+			SSE broadcast to every connected Client:
+		</div>
+		<p class="mt-2 text-sm text-gray-500">
+			(open new tab to see the effect)
+		</p>
+		<div sse-swap="sse-chuck" class="mt-8">Waiting for SSE broadcast...</div>
+		<div class="mt-8">
+			<form hx-post="/broadcast" hx-swap="none">
+				<button class="btn btn-primary" type="submit">
+					Trigger SSE Broadcast
+				</button>
+			</form>
+		</div>
+	</section>
+}

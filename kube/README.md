@@ -1,0 +1,142 @@
+# GoFast Deployment
+
+## Overview
+
+This document provides a comprehensive guide for deploying the GoFast application onto new servers using Kubernetes. 
+The deployment strategy involves building Docker images, pushing them to the GitHub Container Registry (GHCR), and then deploying these images to a Kubernetes cluster.
+
+This guide explains how to set up two separate systems:
+*   **Production** (live for users, called `release`)
+*   **Staging** (for testing, called `release-candidate`)
+
+You'll need to follow this guide's steps twice: once for `release` and once for `release-candidate`. Each will use different settings.
+
+The ultimate aim is to establish a fully automated CI/CD pipeline leveraging GitHub Actions.
+This pipeline will automatically build, test, and deploy the GoFast application based on the type of GitHub Release created:
+-   Creating a **Release** (e.g., `v1.0.0`) in the GitHub repository triggers a deployment to the `release` (production) environment.
+-   Creating a **Pre-release** (e.g., `v1.0.0-rc.1`) triggers a deployment to the `release-candidate` (staging) environment.
+
+The guide is structured into two main phases: setting up the Kubernetes cluster and configuring the GitHub Actions CI/CD pipeline.
+
+**Important**: Run all commands from the `kube` directory.
+
+## Prerequisites
+
+Ensure the following tools are installed:
+- [Docker](https://docs.docker.com/get-docker/)
+- [Kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+- [Helm](https://helm.sh/docs/intro/install/)
+- Optional: [k9s](https://k9scli.io/topics/install/)
+
+You’ll need a server with root access, accessible via SSH:
+- Production/Staging server (e.g. `12.34.56.78`)
+
+Set up domains/subdomains:
+- User Service (e.g. `user.gofast.live`)
+- Admin Service (e.g. `admin.gofast.live`)
+- Client Service (e.g. `client.gofast.live`)
+- Monitoring (e.g. `grafana.gofast.live`)
+
+These domains should resolve to the corresponding server IP addresses:
+
+```
+user.gofast.live -> 12.34.56.78
+admin.gofast.live -> 12.34.56.78
+client.gofast.live -> 12.34.56.78
+grafana.gofast.live -> 12.34.56.78
+```
+
+Include AAAA records if using IPv6.
+
+## Configure Environment Variables
+
+You have two options to set the environment variables:
+
+1. Fill in the `.env` file with your secrets.
+2. Pass the secrets as environment variables when running the scripts (preferred).
+```bash
+GITHUB_CLIENT_ID=your_id \
+GITHUB_CLIENT_SECRET=your_secret \
+... (other variables) \
+sh setup.sh
+```
+
+## Setup Kubernetes Cluster
+
+1. **Run the setup script**:
+```bash
+sh setup.sh
+```
+
+This script will:
+- Install K3s on the server.
+- Configure the Kubernetes cluster and set up the kubeconfig file.
+- Install Helm and the necessary charts.
+- Create the necessary Kubernetes secrets.
+- Set up the PostgreSQL database (CloudNativePG) with an automated backup system.
+- Set up Monitoring using:
+    - OpenTelemetry Auto Instrumentation for Go
+    - Opentelemetry Collector
+    - Victoriametrics
+    - Victorialogs
+    - Tempo
+    - Grafana with pre-configured datasources and dashboards.
+- Set up the PubSub service.
+- Set up the CronJob service.
+- Deploy the User, Admin, and Client services and their respective Ingress resources.
+
+### Important Note
+The deployment will fail, because we didn't build the images yet. The CI/CD pipeline will handle this automatically in the next step.
+
+## Setup GitHub Actions CI/CD
+
+1. In your GitHub repository, navigate to Settings > Environments and click 'New environment' to create two environments:
+   - `release` for production environment
+   - `release-candidate` for staging environment
+
+2. Make sure you are using the correct context:
+```bash
+kubectl config use-context YOUR_CONTEXT
+```
+
+3. Copy the kubeconfig file:
+```bash
+cat $HOME/.kube/config
+```
+
+4. Paste the kubeconfig file into the `KUBE_CONFIG` secret.
+
+5. Save these secrets and GitHub environment variables in the GitHub repository:
+   - `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+   - `PRIVATE_KEY_PEM` and `PUBLIC_KEY_PEM` (generated using `scripts/keys.sh`)
+
+6. Modify the `.github/workflows/release.yml` to match your environments and services.
+
+7. Ensure the image names used when running `kube/setup.sh` match those defined in the `.github/workflows/release.yml` file.
+
+## Deploy
+
+With the setup complete, the CI/CD pipeline will automatically build the images and deploy them to the Kubernetes cluster.
+To trigger a deployment, create a new **Release** or **Pre-release** in your GitHub repository, as detailed in the Overview.
+
+### Framework Specific Instructions
+
+For the Next.js and Vue.js clients, we need to update the build environment variables.
+
+- NEXT_PUBLIC_CLIENT_URL
+- NEXT_PUBLIC_CORE_URL
+- VITE_CLIENT_URL
+- VITE_CORE_URL
+
+### Google Cloud SQL Setup
+
+1. Go to the Google Cloud Console, `IAM & Admin > Service Accounts`, and create a service account with the `Cloud SQL Client` role.
+2. Create and download the service account key, save it as `kube/gcp-sa-key.json`. Add the key to your GitHub repository secrets as `GCP_SA_KEY`.
+3. Enable the `Cloud SQL Admin API`.
+4. Go to `Cloud SQL > Instances`, create a new instance, and select `PostgreSQL` as the database type.
+5. Create a PostgreSQL database and user. Save the database name, user, and password as `DB_NAME`, `DB_USER`, and `DB_PASSWORD` respectively.
+6. Copy the SQL instance connection name (e.g. `project-id:region:instance-name`) as `CLOUD_SQL_CONNECTION_NAME`.
+
+- `kube/setup.sh` - Uncomment the Google Cloud SQL secrets and comment the CloudNativePG secrets.
+- `kube/config/service-core.yaml` - Uncomment the Google SQL Proxy configuration.
+- `.github/workflows/migration.yml` - Uncomment the Google Cloud SQL section and comment the CloudNativePG section.

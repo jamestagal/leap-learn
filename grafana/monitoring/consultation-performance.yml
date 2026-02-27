@@ -1,0 +1,196 @@
+# Performance monitoring configuration for consultation domain
+# This configuration extends the main Prometheus setup with consultation-specific metrics
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: "consultation-monitor"
+    domain: "consultation"
+
+rule_files:
+  - "alerts/consultation-alerts.yml"
+
+scrape_configs:
+  # Core service metrics with consultation focus
+  - job_name: 'consultation-service'
+    static_configs:
+      - targets: ['service-core:4001']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    params:
+      domain: ['consultation']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: service-core:4001
+
+  # Database metrics for consultation queries
+  - job_name: 'consultation-database'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    params:
+      query: ['consultation']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'pg_stat_database_.*'
+        target_label: domain
+        replacement: 'consultation'
+
+  # Business metrics specific to consultation domain
+  - job_name: 'consultation-business-metrics'
+    static_configs:
+      - targets: ['service-core:4001']
+    metrics_path: '/business-metrics'
+    scrape_interval: 60s
+    params:
+      domain: ['consultation']
+
+# Recording rules for consultation domain
+recording_rules:
+  groups:
+    - name: consultation.business_metrics
+      interval: 30s
+      rules:
+        # Consultation completion rate
+        - record: consultation:completion_rate
+          expr: |
+            (
+              sum(consultation_total{status="completed"}) /
+              sum(consultation_total)
+            ) * 100
+
+        # Average consultation completion time
+        - record: consultation:avg_completion_time_hours
+          expr: |
+            avg(consultation_completion_duration_seconds{status="completed"}) / 3600
+
+        # Draft save success rate
+        - record: consultation:draft_save_success_rate
+          expr: |
+            (
+              sum(rate(consultation_drafts_saved_total[5m])) /
+              (sum(rate(consultation_drafts_saved_total[5m])) + sum(rate(consultation_drafts_save_errors_total[5m])))
+            ) * 100
+
+        # API request success rate
+        - record: consultation:api_success_rate_5m
+          expr: |
+            (
+              sum(rate(http_requests_total{handler=~"/consultations.*",code=~"2.."}[5m])) /
+              sum(rate(http_requests_total{handler=~"/consultations.*"}[5m]))
+            ) * 100
+
+        # Database query performance
+        - record: consultation:db_query_p95_ms
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(database_query_duration_seconds_bucket{operation=~"consultation.*"}[5m])) by (le)
+            ) * 1000
+
+        # Active users working on consultations
+        - record: consultation:active_users_5m
+          expr: |
+            count(
+              count by (user_id) (
+                rate(http_requests_total{handler=~"/consultations.*"}[5m]) > 0
+              )
+            )
+
+    - name: consultation.performance_metrics
+      interval: 15s
+      rules:
+        # Request rate by endpoint
+        - record: consultation:request_rate_by_endpoint
+          expr: |
+            sum(rate(http_requests_total{handler=~"/consultations.*"}[5m])) by (handler, method)
+
+        # Error rate by endpoint
+        - record: consultation:error_rate_by_endpoint
+          expr: |
+            sum(rate(http_requests_total{handler=~"/consultations.*",code!~"2.."}[5m])) by (handler, method)
+
+        # Response time percentiles
+        - record: consultation:response_time_p50_ms
+          expr: |
+            histogram_quantile(0.50,
+              sum(rate(http_request_duration_seconds_bucket{handler=~"/consultations.*"}[5m])) by (le, handler)
+            ) * 1000
+
+        - record: consultation:response_time_p95_ms
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{handler=~"/consultations.*"}[5m])) by (le, handler)
+            ) * 1000
+
+        - record: consultation:response_time_p99_ms
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{handler=~"/consultations.*"}[5m])) by (le, handler)
+            ) * 1000
+
+    - name: consultation.resource_metrics
+      interval: 30s
+      rules:
+        # Memory usage for consultation operations
+        - record: consultation:memory_usage_mb
+          expr: |
+            process_resident_memory_bytes{job="consultation-service"} / 1024 / 1024
+
+        # CPU usage for consultation service
+        - record: consultation:cpu_usage_percent
+          expr: |
+            rate(process_cpu_seconds_total{job="consultation-service"}[5m]) * 100
+
+        # Database connection pool usage
+        - record: consultation:db_connections_usage_percent
+          expr: |
+            (database_connections_active{service="consultation"} /
+             database_connections_max{service="consultation"}) * 100
+
+        # Request queue depth (if applicable)
+        - record: consultation:request_queue_depth
+          expr: |
+            http_request_queue_depth{handler=~"/consultations.*"}
+
+# Custom metric definitions for business intelligence
+custom_metrics:
+  consultation_funnel:
+    - metric: consultation_step_completion_rate
+      description: "Completion rate for each step of the consultation process"
+      query: |
+        (sum(consultation_step_completed_total) by (step) /
+         sum(consultation_step_started_total) by (step)) * 100
+
+  consultation_user_behavior:
+    - metric: consultation_session_duration_minutes
+      description: "Average session duration for consultation creation"
+      query: |
+        avg(consultation_session_duration_seconds) / 60
+
+    - metric: consultation_drafts_per_completion
+      description: "Average number of draft saves before completion"
+      query: |
+        avg(consultation_drafts_count_at_completion)
+
+  consultation_performance_sla:
+    - metric: consultation_api_sla_compliance
+      description: "SLA compliance for consultation API (95% of requests under 2s)"
+      query: |
+        (
+          sum(histogram_bucket{handler=~"/consultations.*",le="2.0"}) /
+          sum(histogram_bucket{handler=~"/consultations.*",le="+Inf"})
+        ) * 100
+
+    - metric: consultation_completion_sla_compliance
+      description: "Business SLA for consultation completion time"
+      query: |
+        (
+          sum(consultation_total{completion_time_hours <= 24}) /
+          sum(consultation_total{status="completed"})
+        ) * 100
