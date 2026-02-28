@@ -38,6 +38,7 @@
 		{ label: 'Clients', url: `/${organisationSlug}/clients`, icon: FEATURES.clients.icon, color: FEATURES.clients.color },
 		{ label: 'Forms', url: `/${organisationSlug}/forms`, icon: FEATURES.forms.icon, color: FEATURES.forms.color },
 		{ label: 'Reports', url: `/${organisationSlug}/reports`, icon: FEATURES.reports.icon, color: FEATURES.reports.color },
+		{ label: 'Content', url: `/${organisationSlug}/content`, icon: FEATURES.content.icon, color: FEATURES.content.color },
 		{ label: 'Libraries', url: `/${organisationSlug}/libraries`, icon: FEATURES.libraries.icon, color: FEATURES.libraries.color }
 	]);
 

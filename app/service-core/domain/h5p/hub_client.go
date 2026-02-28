@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultHubURL    = "https://api.h5p.org"
+	defaultHubURL    = "https://hub-api.h5p.org"
 	hubContentTypes  = "/v1/content-types/"
 	hubCacheTTL      = 24 * time.Hour
 	hubCacheKey      = "content-type-cache"

@@ -657,7 +657,7 @@ export const h5pHubRegistrations = pgTable("h5p_hub_registrations", {
 
 	siteKey: text("site_key").notNull().default(""),
 	siteSecret: text("site_secret").notNull().default(""),
-	hubUrl: text("hub_url").notNull().default("https://api.h5p.org"),
+	hubUrl: text("hub_url").notNull().default("https://hub-api.h5p.org"),
 });
 
 // H5P Hub Cache — cached Hub content-type responses (TTL-based)

@@ -201,7 +201,7 @@ func LoadConfig() *Config {
 		GoogleApplicationCredentials: MustSetEnv(os.Getenv("FILE_PROVIDER") == "gcs", "GOOGLE_APPLICATION_CREDENTIALS"),
 		AzblobAccountName:            MustSetEnv(os.Getenv("FILE_PROVIDER") == "azblob", "AZBLOB_ACCOUNT_NAME"),
 		AzblobAccountKey:             MustSetEnv(os.Getenv("FILE_PROVIDER") == "azblob", "AZBLOB_ACCOUNT_KEY"),
-		H5PHubURL:                    os.Getenv("H5P_HUB_URL"), // defaults to https://api.h5p.org in service
+		H5PHubURL:                    os.Getenv("H5P_HUB_URL"), // defaults to https://hub-api.h5p.org in service
 	}
 }
 
@@ -276,6 +276,6 @@ func LoadTestConfig() *Config {
 		GoogleApplicationCredentials: "google_application_credentials",
 		AzblobAccountName:            "azblob_account_name",
 		AzblobAccountKey:             "azblob_account_key",
-		H5PHubURL:                    "https://api.h5p.org",
+		H5PHubURL:                    "https://hub-api.h5p.org",
 	}
 }

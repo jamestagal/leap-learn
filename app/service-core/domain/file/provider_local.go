@@ -60,3 +60,7 @@ func (p *localProvider) Remove(_ context.Context, fileID string) error {
 	}
 	return nil
 }
+
+func (p *localProvider) ListByPrefix(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}

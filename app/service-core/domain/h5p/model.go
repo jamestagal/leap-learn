@@ -1,6 +1,10 @@
 package h5p
 
-import "github.com/google/uuid"
+import (
+	"encoding/json"
+
+	"github.com/google/uuid"
+)
 
 // HubContentType represents a single content type from the H5P Hub API
 type HubContentType struct {
@@ -77,29 +81,89 @@ type LibraryInfo struct {
 	Installed    bool      `json:"installed"`
 }
 
-// ContentTypeCacheEntry combines hub data with local install status
+// ContentTypeCacheEntry combines hub data with local install status.
+// Field names MUST match what the H5P editor JS expects (h5peditor-selector-hub.js, h5peditor.js).
 type ContentTypeCacheEntry struct {
-	ID            string          `json:"id"` // machine_name
-	Title         string          `json:"title"`
-	Summary       string          `json:"summary"`
-	Description   string          `json:"description"`
-	Icon          string          `json:"icon"`
-	MajorVersion  int             `json:"majorVersion"`
-	MinorVersion  int             `json:"minorVersion"`
-	PatchVersion  int             `json:"patchVersion"`
-	IsRecommended bool            `json:"isRecommended"`
-	Popularity    int             `json:"popularity"`
-	Screenshots   []HubScreenshot `json:"screenshots"`
-	Keywords      []string        `json:"keywords"`
-	Categories    []string        `json:"categories"`
-	Owner         string          `json:"owner"`
-	Example       string          `json:"example"`
-	Installed     bool            `json:"installed"`
-	LocalVersion  string          `json:"localVersion,omitempty"`
-	UpdateAvailable bool          `json:"updateAvailable,omitempty"`
+	ID                 string          `json:"id"`
+	MachineName        string          `json:"machineName"`
+	Title              string          `json:"title"`
+	Summary            string          `json:"summary"`
+	Description        string          `json:"description"`
+	Icon               string          `json:"icon"`
+	MajorVersion       int             `json:"majorVersion"`
+	MinorVersion       int             `json:"minorVersion"`
+	PatchVersion       int             `json:"patchVersion"`
+	IsRecommended      bool            `json:"isRecommended"`
+	Popularity         int             `json:"popularity"`
+	Screenshots        []HubScreenshot `json:"screenshots"`
+	Keywords           []string        `json:"keywords"`
+	Categories         []string        `json:"categories"`
+	Owner              string          `json:"owner"`
+	Example            string          `json:"example"`
+	Tutorial           string          `json:"tutorial,omitempty"`
+	Installed          bool            `json:"installed"`
+	LocalMajorVersion  int             `json:"localMajorVersion,omitempty"`
+	LocalMinorVersion  int             `json:"localMinorVersion,omitempty"`
+	LocalPatchVersion  int             `json:"localPatchVersion,omitempty"`
+	UpdateAvailable    bool            `json:"updateAvailable,omitempty"`
 }
 
 // InstallRequest represents a request to install a library from the Hub
 type InstallRequest struct {
 	MachineName string `json:"machineName"`
+}
+
+// EditorLibraryDetail — GET /ajax?action=libraries response for a single library
+type EditorLibraryDetail struct {
+	Name            string                     `json:"name"`
+	Title           string                     `json:"title"`
+	Version         HubVersion                 `json:"version"`
+	CSS             []string                   `json:"css"`
+	JavaScript      []string                   `json:"javascript"`
+	Semantics       json.RawMessage            `json:"semantics"`
+	Language        any                        `json:"language"`        // JSON string of current lang file, or null
+	Languages       []string                   `json:"languages"`
+	DefaultLanguage any                        `json:"defaultLanguage"` // JSON string of default lang file, or null
+	Translations    map[string]json.RawMessage `json:"translations"`
+	UpgradesScript  string                     `json:"upgradesScript,omitempty"`
+}
+
+// EditorContentParams — GET /params/:contentId response
+type EditorContentParams struct {
+	H5P     json.RawMessage `json:"h5p,omitempty"`
+	Library string          `json:"library"`
+	Params  json.RawMessage `json:"params"`
+}
+
+// TempFileResult — POST /ajax?action=files response
+type TempFileResult struct {
+	Path   string `json:"path"`
+	Mime   string `json:"mime"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+
+// ContentInfo — API response for content items
+type ContentInfo struct {
+	ID             uuid.UUID `json:"id"`
+	Title          string    `json:"title"`
+	Slug           string    `json:"slug"`
+	Description    string    `json:"description"`
+	Status         string    `json:"status"`
+	LibraryID      uuid.UUID `json:"libraryId"`
+	LibraryName    string    `json:"libraryName"`
+	LibraryTitle   string    `json:"libraryTitle"`
+	LibraryVersion string    `json:"libraryVersion"`
+	CreatedAt      string    `json:"createdAt"`
+	UpdatedAt      string    `json:"updatedAt"`
+}
+
+// IHubInfo — content-type-cache in editor format
+type IHubInfo struct {
+	APIVersion   HubVersion              `json:"apiVersion"`
+	Details      []any                   `json:"details"`
+	Libraries    []ContentTypeCacheEntry `json:"libraries"`
+	Outdated     bool                    `json:"outdated"`
+	RecentlyUsed []string                `json:"recentlyUsed"`
+	User         string                  `json:"user"`
 }

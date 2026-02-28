@@ -12,7 +12,12 @@ import (
 
 type Querier interface {
 	AcceptPendingMemberships(ctx context.Context, userID uuid.UUID) error
+	CountH5PContentByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountH5PLibraries(ctx context.Context) (int64, error)
+	// =============================================================================
+	// H5P Content (Organisation-scoped)
+	// =============================================================================
+	CreateH5PContent(ctx context.Context, arg CreateH5PContentParams) (H5pContent, error)
 	DeleteExpiredH5PHubCache(ctx context.Context) error
 	DeleteH5PLibrary(ctx context.Context, id uuid.UUID) error
 	DeleteH5PLibraryByMachineName(ctx context.Context, machineName string) error
@@ -22,6 +27,7 @@ type Querier interface {
 	DisableH5POrgLibrary(ctx context.Context, arg DisableH5POrgLibraryParams) error
 	DowngradeOrganisationToFree(ctx context.Context, id uuid.UUID) error
 	EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error
+	GetH5PContent(ctx context.Context, arg GetH5PContentParams) (H5pContent, error)
 	// =============================================================================
 	// H5P Hub Cache
 	// =============================================================================
@@ -33,6 +39,9 @@ type Querier interface {
 	GetH5PLibraryByMachineName(ctx context.Context, machineName string) (H5pLibrary, error)
 	GetH5PLibraryByMachineNameVersion(ctx context.Context, arg GetH5PLibraryByMachineNameVersionParams) (H5pLibrary, error)
 	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]GetH5PLibraryDependenciesRow, error)
+	// Returns all transitive dependencies ordered deepest-first (topological).
+	// This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
+	// libraries that extend them (e.g. H5P.Question).
 	GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error)
 	// =============================================================================
 	// Organisation Billing Queries (Platform Subscriptions)
@@ -45,6 +54,7 @@ type Querier interface {
 	InsertH5PLibraryDependency(ctx context.Context, arg InsertH5PLibraryDependencyParams) error
 	InsertToken(ctx context.Context, arg InsertTokenParams) (Token, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
+	ListH5PContentByOrg(ctx context.Context, arg ListH5PContentByOrgParams) ([]ListH5PContentByOrgRow, error)
 	ListH5PLibraries(ctx context.Context) ([]H5pLibrary, error)
 	ListH5POrgEnabledLibraries(ctx context.Context, orgID uuid.UUID) ([]ListH5POrgEnabledLibrariesRow, error)
 	// =============================================================================
@@ -58,6 +68,8 @@ type Querier interface {
 	SelectUserByEmail(ctx context.Context, email string) (User, error)
 	SelectUserByEmailAndSub(ctx context.Context, arg SelectUserByEmailAndSubParams) (User, error)
 	SelectUsers(ctx context.Context) ([]User, error)
+	SoftDeleteH5PContent(ctx context.Context, arg SoftDeleteH5PContentParams) error
+	UpdateH5PContent(ctx context.Context, arg UpdateH5PContentParams) (H5pContent, error)
 	UpdateOrganisationStripeCustomer(ctx context.Context, arg UpdateOrganisationStripeCustomerParams) error
 	UpdateOrganisationSubscription(ctx context.Context, arg UpdateOrganisationSubscriptionParams) error
 	UpdateToken(ctx context.Context, arg UpdateTokenParams) error

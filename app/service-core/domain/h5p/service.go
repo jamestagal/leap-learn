@@ -41,6 +41,18 @@ type store interface {
 	// Org libraries
 	EnableH5POrgLibrary(ctx context.Context, arg query.EnableH5POrgLibraryParams) error
 	DisableH5POrgLibrary(ctx context.Context, arg query.DisableH5POrgLibraryParams) error
+
+	// Content
+	CreateH5PContent(ctx context.Context, arg query.CreateH5PContentParams) (query.H5pContent, error)
+	GetH5PContent(ctx context.Context, arg query.GetH5PContentParams) (query.H5pContent, error)
+	ListH5PContentByOrg(ctx context.Context, arg query.ListH5PContentByOrgParams) ([]query.ListH5PContentByOrgRow, error)
+	UpdateH5PContent(ctx context.Context, arg query.UpdateH5PContentParams) (query.H5pContent, error)
+	SoftDeleteH5PContent(ctx context.Context, arg query.SoftDeleteH5PContentParams) error
+	CountH5PContentByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
+
+	// Dependency tree (used by editor)
+	GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]query.H5pLibrary, error)
+	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]query.GetH5PLibraryDependenciesRow, error)
 }
 
 // Service handles H5P library management
@@ -88,6 +100,7 @@ func (s *Service) GetContentTypeCache(ctx context.Context) ([]ContentTypeCacheEn
 	for _, ct := range hubData.ContentTypes {
 		entry := ContentTypeCacheEntry{
 			ID:            ct.ID,
+			MachineName:   ct.ID, // H5P editor JS expects machineName field
 			Title:         ct.Title,
 			Summary:       ct.Summary,
 			Description:   ct.Description,
@@ -106,7 +119,9 @@ func (s *Service) GetContentTypeCache(ctx context.Context) ([]ContentTypeCacheEn
 
 		if lib, ok := installedMap[ct.ID]; ok {
 			entry.Installed = true
-			entry.LocalVersion = fmt.Sprintf("%d.%d.%d", lib.MajorVersion, lib.MinorVersion, lib.PatchVersion)
+			entry.LocalMajorVersion = int(lib.MajorVersion)
+			entry.LocalMinorVersion = int(lib.MinorVersion)
+			entry.LocalPatchVersion = int(lib.PatchVersion)
 			// Check if hub version is newer
 			if ct.Version.Major > int(lib.MajorVersion) ||
 				(ct.Version.Major == int(lib.MajorVersion) && ct.Version.Minor > int(lib.MinorVersion)) ||
@@ -174,7 +189,7 @@ func (s *Service) GetHubRegistry(ctx context.Context, baseURL string) (*HubRegis
 	copy(types, hubData.ContentTypes)
 	for i := range types {
 		ct := &types[i]
-		ct.Icon = fmt.Sprintf("%s/api/v1/h5p/libraries/%s-%d.%d.%d/icon.svg",
+		ct.Icon = fmt.Sprintf("%s/api/h5p/libraries/%s-%d.%d.%d/icon.svg",
 			baseURL, ct.ID, ct.Version.Major, ct.Version.Minor, ct.Version.Patch)
 	}
 
@@ -236,8 +251,18 @@ func (s *Service) InstallLibrary(ctx context.Context, machineName string) (*Libr
 		return nil, pkg.BadRequestError{Message: "H5P package contains no libraries"}
 	}
 
-	// Install each library in the package (main + dependencies)
+	// Two-pass install: first create all library records, then store dependencies.
+	// This avoids the ordering problem where storeDependencies skips deps
+	// that haven't been inserted yet (e.g. H5P.MultiChoice before H5P.Question).
+
+	// Pass 1: Install all libraries (upload files + upsert DB records, skip deps)
 	var mainLib *query.H5pLibrary
+	type installedLib struct {
+		dbLib   query.H5pLibrary
+		libJSON LibraryJSON
+	}
+	installed := make([]installedLib, 0, len(extracted.Libraries))
+
 	for _, extLib := range extracted.Libraries {
 		lib, err := s.installSingleLibrary(ctx, extLib, packageData, extLib.LibraryJSON.MachineName == machineName)
 		if err != nil {
@@ -247,8 +272,17 @@ func (s *Service) InstallLibrary(ctx context.Context, machineName string) (*Libr
 			continue
 		}
 
+		installed = append(installed, installedLib{dbLib: *lib, libJSON: extLib.LibraryJSON})
+
 		if extLib.LibraryJSON.MachineName == machineName {
 			mainLib = lib
+		}
+	}
+
+	// Pass 2: Store dependencies now that all libraries exist in the DB
+	for _, il := range installed {
+		if err := s.storeDependencies(ctx, il.dbLib.ID, il.libJSON); err != nil {
+			slog.Warn("Failed to store dependencies (pass 2)", "library", il.libJSON.MachineName, "error", err)
 		}
 	}
 
@@ -371,10 +405,8 @@ func (s *Service) installSingleLibrary(ctx context.Context, extLib ExtractedLibr
 		return nil, fmt.Errorf("upserting library %s: %w", lj.MachineName, err)
 	}
 
-	// Store dependencies
-	if err := s.storeDependencies(ctx, lib.ID, lj); err != nil {
-		slog.Warn("Failed to store dependencies", "library", lj.MachineName, "error", err)
-	}
+	// Note: dependencies are stored in a second pass by InstallLibrary
+	// after all libraries in the package have been inserted into the DB.
 
 	slog.Info("Installed library",
 		"machineName", lj.MachineName,
@@ -395,7 +427,8 @@ func (s *Service) storeDependencies(ctx context.Context, libraryID uuid.UUID, lj
 			// Look up the dependency library (it must already be installed)
 			depLib, err := s.store.GetH5PLibraryByMachineName(ctx, dep.MachineName)
 			if err != nil {
-				slog.Debug("Dependency not yet installed", "dep", dep.MachineName, "type", depType)
+				slog.Warn("Dependency not found in DB — cannot link",
+					"library", lj.MachineName, "dep", dep.MachineName, "type", depType)
 				continue // Skip deps that aren't installed yet
 			}
 			err = s.store.InsertH5PLibraryDependency(ctx, query.InsertH5PLibraryDependencyParams{

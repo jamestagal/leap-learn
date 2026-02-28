@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS h5p_hub_registrations (
 
     site_key     TEXT NOT NULL DEFAULT '',
     site_secret  TEXT NOT NULL DEFAULT '',
-    hub_url      TEXT NOT NULL DEFAULT 'https://api.h5p.org'
+    hub_url      TEXT NOT NULL DEFAULT 'https://hub-api.h5p.org'
 );
 
 CREATE INDEX IF NOT EXISTS idx_h5p_hub_reg_org ON h5p_hub_registrations(org_id);

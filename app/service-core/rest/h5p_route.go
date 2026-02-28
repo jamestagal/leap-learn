@@ -212,7 +212,7 @@ func (h *Handler) handleH5PHubRegister(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleH5PHubContentTypes(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 
-	registry, err := h.h5pService.GetHubRegistry(r.Context(), h.cfg.CoreURL)
+	registry, err := h.h5pService.GetHubRegistry(r.Context(), h.cfg.ClientURL)
 	if err != nil {
 		slog.Error("Error fetching hub registry", "error", err)
 		w.Header().Set("Content-Type", "application/json")

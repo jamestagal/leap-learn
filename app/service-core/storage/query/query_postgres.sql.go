@@ -25,6 +25,17 @@ func (q *Queries) AcceptPendingMemberships(ctx context.Context, userID uuid.UUID
 	return err
 }
 
+const countH5PContentByOrg = `-- name: CountH5PContentByOrg :one
+SELECT count(*) FROM h5p_content WHERE org_id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) CountH5PContentByOrg(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countH5PContentByOrg, orgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countH5PLibraries = `-- name: CountH5PLibraries :one
 SELECT count(*) FROM h5p_libraries
 `
@@ -34,6 +45,68 @@ func (q *Queries) CountH5PLibraries(ctx context.Context) (int64, error) {
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createH5PContent = `-- name: CreateH5PContent :one
+
+INSERT INTO h5p_content (id, org_id, library_id, created_by, title, slug,
+    description, content_json, tags, folder_path, storage_path, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, created_at, updated_at, org_id, library_id, created_by, title, slug, description, content_json, tags, folder_path, storage_path, status, deleted_at
+`
+
+type CreateH5PContentParams struct {
+	ID          uuid.UUID       `json:"id"`
+	OrgID       uuid.UUID       `json:"org_id"`
+	LibraryID   uuid.UUID       `json:"library_id"`
+	CreatedBy   uuid.NullUUID   `json:"created_by"`
+	Title       string          `json:"title"`
+	Slug        string          `json:"slug"`
+	Description string          `json:"description"`
+	ContentJson json.RawMessage `json:"content_json"`
+	Tags        []string        `json:"tags"`
+	FolderPath  sql.NullString  `json:"folder_path"`
+	StoragePath sql.NullString  `json:"storage_path"`
+	Status      string          `json:"status"`
+}
+
+// =============================================================================
+// H5P Content (Organisation-scoped)
+// =============================================================================
+func (q *Queries) CreateH5PContent(ctx context.Context, arg CreateH5PContentParams) (H5pContent, error) {
+	row := q.db.QueryRowContext(ctx, createH5PContent,
+		arg.ID,
+		arg.OrgID,
+		arg.LibraryID,
+		arg.CreatedBy,
+		arg.Title,
+		arg.Slug,
+		arg.Description,
+		arg.ContentJson,
+		pq.Array(arg.Tags),
+		arg.FolderPath,
+		arg.StoragePath,
+		arg.Status,
+	)
+	var i H5pContent
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrgID,
+		&i.LibraryID,
+		&i.CreatedBy,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.ContentJson,
+		pq.Array(&i.Tags),
+		&i.FolderPath,
+		&i.StoragePath,
+		&i.Status,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const deleteExpiredH5PHubCache = `-- name: DeleteExpiredH5PHubCache :exec
@@ -141,6 +214,38 @@ type EnableH5POrgLibraryParams struct {
 func (q *Queries) EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error {
 	_, err := q.db.ExecContext(ctx, enableH5POrgLibrary, arg.ID, arg.OrgID, arg.LibraryID)
 	return err
+}
+
+const getH5PContent = `-- name: GetH5PContent :one
+SELECT id, created_at, updated_at, org_id, library_id, created_by, title, slug, description, content_json, tags, folder_path, storage_path, status, deleted_at FROM h5p_content WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
+`
+
+type GetH5PContentParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetH5PContent(ctx context.Context, arg GetH5PContentParams) (H5pContent, error) {
+	row := q.db.QueryRowContext(ctx, getH5PContent, arg.ID, arg.OrgID)
+	var i H5pContent
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrgID,
+		&i.LibraryID,
+		&i.CreatedBy,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.ContentJson,
+		pq.Array(&i.Tags),
+		&i.FolderPath,
+		&i.StoragePath,
+		&i.Status,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const getH5PHubCache = `-- name: GetH5PHubCache :one
@@ -343,12 +448,21 @@ WITH RECURSIVE dep_tree AS (
     FROM h5p_library_dependencies d
     JOIN dep_tree dt ON dt.library_id = d.library_id
     WHERE dt.depth < 20
+),
+dep_max_depth AS (
+    SELECT library_id, MAX(depth) AS max_depth
+    FROM dep_tree
+    GROUP BY library_id
 )
-SELECT DISTINCT l.id, l.created_at, l.updated_at, l.machine_name, l.major_version, l.minor_version, l.patch_version, l.title, l.origin, l.metadata_json, l.categories, l.keywords, l.screenshots, l.description, l.icon_path, l.package_path, l.extracted_path, l.runnable, l.restricted
-FROM dep_tree dt
-JOIN h5p_libraries l ON l.id = dt.library_id
+SELECT l.id, l.created_at, l.updated_at, l.machine_name, l.major_version, l.minor_version, l.patch_version, l.title, l.origin, l.metadata_json, l.categories, l.keywords, l.screenshots, l.description, l.icon_path, l.package_path, l.extracted_path, l.runnable, l.restricted
+FROM dep_max_depth dmd
+JOIN h5p_libraries l ON l.id = dmd.library_id
+ORDER BY dmd.max_depth DESC
 `
 
+// Returns all transitive dependencies ordered deepest-first (topological).
+// This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
+// libraries that extend them (e.g. H5P.Question).
 func (q *Queries) GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error) {
 	rows, err := q.db.QueryContext(ctx, getH5PLibraryFullDependencyTree, libraryID)
 	if err != nil {
@@ -584,6 +698,88 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 		&i.SuspendedReason,
 	)
 	return i, err
+}
+
+const listH5PContentByOrg = `-- name: ListH5PContentByOrg :many
+SELECT c.id, c.created_at, c.updated_at, c.org_id, c.library_id, c.created_by, c.title, c.slug, c.description, c.content_json, c.tags, c.folder_path, c.storage_path, c.status, c.deleted_at, l.machine_name, l.title as library_title,
+    l.major_version as library_major, l.minor_version as library_minor,
+    l.patch_version as library_patch
+FROM h5p_content c JOIN h5p_libraries l ON c.library_id = l.id
+WHERE c.org_id = $1 AND c.deleted_at IS NULL
+ORDER BY c.updated_at DESC LIMIT $2 OFFSET $3
+`
+
+type ListH5PContentByOrgParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	Limit  int32     `json:"limit"`
+	Offset int32     `json:"offset"`
+}
+
+type ListH5PContentByOrgRow struct {
+	ID           uuid.UUID       `json:"id"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	OrgID        uuid.UUID       `json:"org_id"`
+	LibraryID    uuid.UUID       `json:"library_id"`
+	CreatedBy    uuid.NullUUID   `json:"created_by"`
+	Title        string          `json:"title"`
+	Slug         string          `json:"slug"`
+	Description  string          `json:"description"`
+	ContentJson  json.RawMessage `json:"content_json"`
+	Tags         []string        `json:"tags"`
+	FolderPath   sql.NullString  `json:"folder_path"`
+	StoragePath  sql.NullString  `json:"storage_path"`
+	Status       string          `json:"status"`
+	DeletedAt    sql.NullTime    `json:"deleted_at"`
+	MachineName  string          `json:"machine_name"`
+	LibraryTitle string          `json:"library_title"`
+	LibraryMajor int32           `json:"library_major"`
+	LibraryMinor int32           `json:"library_minor"`
+	LibraryPatch int32           `json:"library_patch"`
+}
+
+func (q *Queries) ListH5PContentByOrg(ctx context.Context, arg ListH5PContentByOrgParams) ([]ListH5PContentByOrgRow, error) {
+	rows, err := q.db.QueryContext(ctx, listH5PContentByOrg, arg.OrgID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListH5PContentByOrgRow
+	for rows.Next() {
+		var i ListH5PContentByOrgRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OrgID,
+			&i.LibraryID,
+			&i.CreatedBy,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.ContentJson,
+			pq.Array(&i.Tags),
+			&i.FolderPath,
+			&i.StoragePath,
+			&i.Status,
+			&i.DeletedAt,
+			&i.MachineName,
+			&i.LibraryTitle,
+			&i.LibraryMajor,
+			&i.LibraryMinor,
+			&i.LibraryPatch,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listH5PLibraries = `-- name: ListH5PLibraries :many
@@ -994,6 +1190,68 @@ func (q *Queries) SelectUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const softDeleteH5PContent = `-- name: SoftDeleteH5PContent :exec
+UPDATE h5p_content SET deleted_at = current_timestamp
+WHERE id = $1 AND org_id = $2
+`
+
+type SoftDeleteH5PContentParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) SoftDeleteH5PContent(ctx context.Context, arg SoftDeleteH5PContentParams) error {
+	_, err := q.db.ExecContext(ctx, softDeleteH5PContent, arg.ID, arg.OrgID)
+	return err
+}
+
+const updateH5PContent = `-- name: UpdateH5PContent :one
+UPDATE h5p_content SET title = $3, description = $4, content_json = $5,
+    tags = $6, status = $7, updated_at = current_timestamp
+WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL RETURNING id, created_at, updated_at, org_id, library_id, created_by, title, slug, description, content_json, tags, folder_path, storage_path, status, deleted_at
+`
+
+type UpdateH5PContentParams struct {
+	ID          uuid.UUID       `json:"id"`
+	OrgID       uuid.UUID       `json:"org_id"`
+	Title       string          `json:"title"`
+	Description string          `json:"description"`
+	ContentJson json.RawMessage `json:"content_json"`
+	Tags        []string        `json:"tags"`
+	Status      string          `json:"status"`
+}
+
+func (q *Queries) UpdateH5PContent(ctx context.Context, arg UpdateH5PContentParams) (H5pContent, error) {
+	row := q.db.QueryRowContext(ctx, updateH5PContent,
+		arg.ID,
+		arg.OrgID,
+		arg.Title,
+		arg.Description,
+		arg.ContentJson,
+		pq.Array(arg.Tags),
+		arg.Status,
+	)
+	var i H5pContent
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OrgID,
+		&i.LibraryID,
+		&i.CreatedBy,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.ContentJson,
+		pq.Array(&i.Tags),
+		&i.FolderPath,
+		&i.StoragePath,
+		&i.Status,
+		&i.DeletedAt,
+	)
+	return i, err
 }
 
 const updateOrganisationStripeCustomer = `-- name: UpdateOrganisationStripeCustomer :exec

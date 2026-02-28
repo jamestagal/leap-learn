@@ -80,3 +80,11 @@ func (p *r2Provider) Remove(ctx context.Context, fileKey string) error {
 	}
 	return removeFileFromProvider(ctx, client, p.cfg.BucketName, fileKey)
 }
+
+func (p *r2Provider) ListByPrefix(ctx context.Context, prefix string) ([]string, error) {
+	client, err := p.getClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting R2 client for list: %w", err)
+	}
+	return listByPrefixFromProvider(ctx, client, p.cfg.BucketName, prefix)
+}

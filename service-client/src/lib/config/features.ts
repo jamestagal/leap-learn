@@ -12,6 +12,7 @@ import {
 	Send,
 	ChartColumnBig,
 	BookOpen,
+	Puzzle,
 } from "lucide-svelte";
 import type { ComponentType } from "svelte";
 
@@ -30,6 +31,7 @@ export type FeatureKey =
 	| "forms"
 	| "clients"
 	| "reports"
+	| "content"
 	| "libraries";
 
 /**
@@ -59,6 +61,14 @@ export const FEATURES: Record<FeatureKey, FeatureConfig> = {
 		icon: ChartColumnBig,
 		color: "#f59e0b", // Amber
 		colorLight: "#f59e0b15",
+	},
+	content: {
+		key: "content",
+		title: "Content",
+		description: "Create and manage interactive H5P learning content.",
+		icon: Puzzle,
+		color: "#3b82f6", // Blue
+		colorLight: "#3b82f615",
 	},
 	libraries: {
 		key: "libraries",

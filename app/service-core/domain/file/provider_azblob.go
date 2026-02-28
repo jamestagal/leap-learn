@@ -113,3 +113,7 @@ func (p *azblobProvider) Remove(ctx context.Context, fileKey string) error {
 
 	return nil
 }
+
+func (p *azblobProvider) ListByPrefix(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}

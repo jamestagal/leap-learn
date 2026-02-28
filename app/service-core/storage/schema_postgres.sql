@@ -190,7 +190,7 @@ create table if not exists h5p_hub_registrations (
     org_id uuid not null unique references organisations(id) on delete cascade,
     site_key text not null default '',
     site_secret text not null default '',
-    hub_url text not null default 'https://api.h5p.org'
+    hub_url text not null default 'https://hub-api.h5p.org'
 );
 
 create table if not exists h5p_hub_cache (

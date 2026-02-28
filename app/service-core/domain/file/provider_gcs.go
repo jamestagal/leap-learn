@@ -107,3 +107,7 @@ func (p *gcsProvider) Remove(ctx context.Context, fileKey string) error {
 
 	return nil
 }
+
+func (p *gcsProvider) ListByPrefix(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}

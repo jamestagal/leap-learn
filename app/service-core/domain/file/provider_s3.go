@@ -72,3 +72,11 @@ func (p *s3Provider) Remove(ctx context.Context, fileKey string) error {
 	}
 	return removeFileFromProvider(ctx, client, p.cfg.BucketName, fileKey)
 }
+
+func (p *s3Provider) ListByPrefix(ctx context.Context, prefix string) ([]string, error) {
+	client, err := p.getClient(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting S3 client for list: %w", err)
+	}
+	return listByPrefixFromProvider(ctx, client, p.cfg.BucketName, prefix)
+}

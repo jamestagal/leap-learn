@@ -50,6 +50,18 @@ func Run(apiHandler *Handler) *http.Server {
 	mux.HandleFunc("/api/v1/h5p/hub/register", apiHandler.handleH5PHubRegister)
 	mux.HandleFunc("/api/v1/h5p/hub/content-types/", apiHandler.handleH5PHubContentTypesRoute)
 
+	// H5P Editor AJAX (authenticated)
+	mux.HandleFunc("/api/v1/h5p/editor/ajax", apiHandler.handleEditorAjax)
+	mux.HandleFunc("/api/v1/h5p/editor/params/", apiHandler.handleEditorGetParams)
+
+	// H5P Content CRUD (authenticated)
+	mux.HandleFunc("/api/v1/h5p/content", apiHandler.handleContentRoute)
+	mux.HandleFunc("/api/v1/h5p/content/", apiHandler.handleContentCRUDRoute)
+
+	// H5P Content + Temp File Serving (authenticated)
+	mux.HandleFunc("/api/v1/h5p/content-files/", apiHandler.handleContentFile)
+	mux.HandleFunc("/api/v1/h5p/temp-files/", apiHandler.handleTempFile)
+
 	// Cron jobs
 	mux.HandleFunc("/tasks/delete-tokens", apiHandler.handleTasksDeleteTokens)
 

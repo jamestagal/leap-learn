@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -51,4 +52,19 @@ func removeFileFromProvider(ctx context.Context, client *s3.Client, bucketName s
 	}
 
 	return nil
+}
+
+func listByPrefixFromProvider(ctx context.Context, client *s3.Client, bucketName, prefix string) ([]string, error) {
+	output, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+		Prefix: aws.String(prefix),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error listing objects by prefix: %w", err)
+	}
+	keys := make([]string, 0, len(output.Contents))
+	for _, obj := range output.Contents {
+		keys = append(keys, strings.TrimPrefix(*obj.Key, prefix))
+	}
+	return keys, nil
 }

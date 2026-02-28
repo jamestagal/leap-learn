@@ -194,6 +194,9 @@ WHERE d.library_id = $1;
 DELETE FROM h5p_library_dependencies WHERE library_id = $1;
 
 -- name: GetH5PLibraryFullDependencyTree :many
+-- Returns all transitive dependencies ordered deepest-first (topological).
+-- This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
+-- libraries that extend them (e.g. H5P.Question).
 WITH RECURSIVE dep_tree AS (
     SELECT d.depends_on_id AS library_id, d.dependency_type, 0 AS depth
     FROM h5p_library_dependencies d
@@ -203,10 +206,16 @@ WITH RECURSIVE dep_tree AS (
     FROM h5p_library_dependencies d
     JOIN dep_tree dt ON dt.library_id = d.library_id
     WHERE dt.depth < 20
+),
+dep_max_depth AS (
+    SELECT library_id, MAX(depth) AS max_depth
+    FROM dep_tree
+    GROUP BY library_id
 )
-SELECT DISTINCT l.*
-FROM dep_tree dt
-JOIN h5p_libraries l ON l.id = dt.library_id;
+SELECT l.*
+FROM dep_max_depth dmd
+JOIN h5p_libraries l ON l.id = dmd.library_id
+ORDER BY dmd.max_depth DESC;
 
 -- =============================================================================
 -- H5P Hub Cache
@@ -261,3 +270,36 @@ WHERE org_id = $1 AND library_id = $2;
 
 -- name: DeleteH5POrgLibrary :exec
 DELETE FROM h5p_org_libraries WHERE org_id = $1 AND library_id = $2;
+
+-- =============================================================================
+-- H5P Content (Organisation-scoped)
+-- =============================================================================
+
+-- name: CreateH5PContent :one
+INSERT INTO h5p_content (id, org_id, library_id, created_by, title, slug,
+    description, content_json, tags, folder_path, storage_path, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING *;
+
+-- name: GetH5PContent :one
+SELECT * FROM h5p_content WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL;
+
+-- name: ListH5PContentByOrg :many
+SELECT c.*, l.machine_name, l.title as library_title,
+    l.major_version as library_major, l.minor_version as library_minor,
+    l.patch_version as library_patch
+FROM h5p_content c JOIN h5p_libraries l ON c.library_id = l.id
+WHERE c.org_id = $1 AND c.deleted_at IS NULL
+ORDER BY c.updated_at DESC LIMIT $2 OFFSET $3;
+
+-- name: UpdateH5PContent :one
+UPDATE h5p_content SET title = $3, description = $4, content_json = $5,
+    tags = $6, status = $7, updated_at = current_timestamp
+WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL RETURNING *;
+
+-- name: SoftDeleteH5PContent :exec
+UPDATE h5p_content SET deleted_at = current_timestamp
+WHERE id = $1 AND org_id = $2;
+
+-- name: CountH5PContentByOrg :one
+SELECT count(*) FROM h5p_content WHERE org_id = $1 AND deleted_at IS NULL;

@@ -15,6 +15,7 @@ type Provider interface {
 	Upload(ctx context.Context, file *File) error
 	Download(ctx context.Context, fileKey string) ([]byte, error)
 	Remove(ctx context.Context, fileKey string) error
+	ListByPrefix(ctx context.Context, prefix string) ([]string, error)
 }
 
 //nolint:ireturn

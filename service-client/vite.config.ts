@@ -8,6 +8,7 @@ export default defineConfig({
 	plugins: [tailwindcss(), sentrySvelteKit({ autoUploadSourceMaps: false }), sveltekit()],
 	server: {
 		port: 3000,
+		strictPort: true,
 		host: "0.0.0.0",
 		fs: {
 			strict: false,
