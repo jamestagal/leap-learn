@@ -162,6 +162,60 @@ func (s *Service) getCachedHubData(ctx context.Context) (*HubResponse, error) {
 	return hubResp, nil
 }
 
+// GetHubRegistry returns the hub data in Catharsis format with local icon URLs.
+func (s *Service) GetHubRegistry(ctx context.Context, baseURL string) (*HubRegistryResponse, error) {
+	hubData, err := s.getCachedHubData(ctx)
+	if err != nil {
+		return nil, pkg.InternalError{Message: "Error fetching content type cache", Err: err}
+	}
+
+	// Rewrite icon URLs to point to our local asset endpoint
+	types := make([]HubContentType, len(hubData.ContentTypes))
+	copy(types, hubData.ContentTypes)
+	for i := range types {
+		ct := &types[i]
+		ct.Icon = fmt.Sprintf("%s/api/v1/h5p/libraries/%s-%d.%d.%d/icon.svg",
+			baseURL, ct.ID, ct.Version.Major, ct.Version.Minor, ct.Version.Patch)
+	}
+
+	return &HubRegistryResponse{
+		ContentTypes: types,
+		APIVersion:   HubVersion{Major: 1, Minor: 26},
+		Outdated:     false,
+	}, nil
+}
+
+// GetLibraryPackage returns the raw .h5p package bytes for an installed library.
+func (s *Service) GetLibraryPackage(ctx context.Context, machineName string) ([]byte, error) {
+	lib, err := s.store.GetH5PLibraryByMachineName(ctx, machineName)
+	if err != nil {
+		return nil, pkg.NotFoundError{Message: "Library not found", Err: err}
+	}
+
+	if !lib.PackagePath.Valid {
+		return nil, pkg.NotFoundError{Message: "Library package not available"}
+	}
+
+	data, err := s.fileProvider.Download(ctx, lib.PackagePath.String)
+	if err != nil {
+		return nil, pkg.InternalError{Message: "Error downloading library package", Err: err}
+	}
+
+	return data, nil
+}
+
+// GetLibraryAsset returns a file from an extracted library (e.g. icon.svg, scripts).
+func (s *Service) GetLibraryAsset(ctx context.Context, assetPath string) ([]byte, string, error) {
+	key := "h5p-libraries/extracted/" + assetPath
+	data, err := s.fileProvider.Download(ctx, key)
+	if err != nil {
+		return nil, "", pkg.NotFoundError{Message: "Asset not found", Err: err}
+	}
+
+	contentType := detectContentType(assetPath)
+	return data, contentType, nil
+}
+
 // InstallLibrary downloads and installs a library from the H5P Hub
 func (s *Service) InstallLibrary(ctx context.Context, machineName string) (*LibraryInfo, error) {
 	slog.Info("Installing H5P library", "machineName", machineName)

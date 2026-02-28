@@ -55,6 +55,13 @@ type HubResponse struct {
 	ContentTypes []HubContentType `json:"contentTypes"`
 }
 
+// HubRegistryResponse is the Catharsis-format response served by our Hub endpoints
+type HubRegistryResponse struct {
+	ContentTypes []HubContentType `json:"contentTypes"`
+	APIVersion   HubVersion       `json:"apiVersion"`
+	Outdated     bool             `json:"outdated"`
+}
+
 // LibraryInfo is the API response for a single installed library
 type LibraryInfo struct {
 	ID           uuid.UUID `json:"id"`

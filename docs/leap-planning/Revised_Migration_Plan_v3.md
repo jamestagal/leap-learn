@@ -365,18 +365,34 @@ H5PPlayer.svelte already has xAPI event handling scaffolding. Wire it up:
 
 Replace the hardcoded empty progress in learn pages with actual Drizzle queries against `progress_records` and `enrollments`.
 
-### 3.4 Hub API (Catharsis replacement)
+### 3.4 Hub API (Catharsis replacement) — ✅ ALREADY BUILT
 
-Port the self-hosted hub endpoints from LEAP's hub service:
+The three Catharsis-format hub endpoints are **already implemented** in the Go core service (built during Phase 1 library management work, not during Phase 3 as originally planned):
 
 ```
-/api/h5p-hub/sites              → POST: return { uuid }
-/api/h5p-hub/content-types/     → POST: return registry from h5p_hub_cache
-/api/h5p-hub/content-types/:id  → GET: stream .h5p from R2
+POST /api/v1/h5p/hub/register           → Return { uuid } (site registration)
+POST /api/v1/h5p/hub/content-types/     → Return Catharsis-format registry JSON
+GET  /api/v1/h5p/hub/content-types/:id  → Stream .h5p package from R2
+GET  /api/v1/h5p/libraries/{path...}    → Serve library assets (icons, JS, CSS) from R2
 ```
+
+All four endpoints are unauthenticated (H5P editor calls them without auth tokens). See `docs/leap-planning/hub-endpoints-plan.md` for full specification.
+
+**⚠️ Important nuance for H5P editor integration:**
+
+The content types registry endpoint (`POST /api/v1/h5p/hub/content-types/`) currently returns **all** H5P.org content types regardless of local install status. This is correct for the Content Type Browser — it shows everything available with "Install" buttons for types not yet installed.
+
+However, when the H5P editor is in **content-creation mode** (user is editing/creating H5P content), it typically only needs **installed** types. The editor's content type selector should filter to locally-installed libraries only, since you can't create content with a library that isn't installed.
+
+Two approaches when Phase 3 reaches editor integration:
+
+1. **Client-side filtering** (simplest): The editor config can filter the registry response to only show installed types in the creation UI, while the Content Type Browser still shows everything.
+2. **Query parameter on the endpoint**: Add an optional `?installed_only=true` parameter that makes `GetHubRegistry()` filter to only libraries present in `h5p_libraries`. This keeps the filtering server-side.
+
+Either way, the existing endpoint works as-is for the Content Type Browser. The filtering decision only matters when wiring up the editor's content creation flow.
 
 ### Deliverable
-Teachers can build courses from H5P content. Students enroll, learn, and have progress tracked. Self-hosted hub API working.
+Teachers can build courses from H5P content. Students enroll, learn, and have progress tracked. Hub API already functional from Phase 1.
 
 ---
 

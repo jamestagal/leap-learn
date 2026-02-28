@@ -4,6 +4,7 @@ import (
 	"app/pkg"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -107,13 +108,22 @@ func (h *Handler) handleH5PLibraries(w http.ResponseWriter, r *http.Request) {
 	writeResponse(h.cfg, w, r, libs, nil)
 }
 
-// handleH5PDeleteLibrary deletes a library by machine name
-func (h *Handler) handleH5PDeleteLibrary(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
+// handleH5PLibraryRoute dispatches /api/v1/h5p/libraries/ by HTTP method:
+// GET  → serve extracted library assets (unauthenticated)
+// DELETE → delete a library (authenticated)
+func (h *Handler) handleH5PLibraryRoute(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.handleH5PLibraryAsset(w, r)
+	case http.MethodDelete:
+		h.handleH5PDeleteLibrary(w, r)
+	default:
 		writeResponse(h.cfg, w, r, nil, pkg.BadRequestError{Message: "Method not allowed"})
-		return
 	}
+}
 
+// handleH5PDeleteLibrary deletes a library by machine name (authenticated)
+func (h *Handler) handleH5PDeleteLibrary(w http.ResponseWriter, r *http.Request) {
 	// Require authentication
 	token := extractAccessToken(r)
 	if token == "" {
@@ -140,6 +150,94 @@ func (h *Handler) handleH5PDeleteLibrary(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeResponse(h.cfg, w, r, map[string]bool{"deleted": true}, nil)
+}
+
+// handleH5PLibraryAsset serves files from extracted libraries (unauthenticated).
+// GET /api/v1/h5p/libraries/{machineName}-{version}/{filepath...}
+func (h *Handler) handleH5PLibraryAsset(w http.ResponseWriter, r *http.Request) {
+	assetPath := strings.TrimPrefix(r.URL.Path, "/api/v1/h5p/libraries/")
+	if assetPath == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	data, contentType, err := h.h5pService.GetLibraryAsset(r.Context(), assetPath)
+	if err != nil {
+		slog.Debug("Library asset not found", "path", assetPath, "error", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Write(data)
+}
+
+// handleH5PHubContentTypesRoute dispatches /api/v1/h5p/hub/content-types/ by method:
+// POST (exact path) → hub registry
+// GET  (with suffix) → package download
+func (h *Handler) handleH5PHubContentTypesRoute(w http.ResponseWriter, r *http.Request) {
+	suffix := strings.TrimPrefix(r.URL.Path, "/api/v1/h5p/hub/content-types/")
+
+	switch {
+	case r.Method == http.MethodPost && suffix == "":
+		h.handleH5PHubContentTypes(w, r)
+	case r.Method == http.MethodGet && suffix != "":
+		h.handleH5PHubContentTypeDownload(w, r, suffix)
+	default:
+		writeResponse(h.cfg, w, r, nil, pkg.BadRequestError{Message: "Method not allowed"})
+	}
+}
+
+// handleH5PHubRegister handles POST /api/v1/h5p/hub/register (unauthenticated).
+// Echoes back the uuid or generates a new one.
+func (h *Handler) handleH5PHubRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeResponse(h.cfg, w, r, nil, pkg.BadRequestError{Message: "Method not allowed"})
+		return
+	}
+
+	_ = r.ParseForm()
+	uid := r.FormValue("uuid")
+	if uid == "" {
+		uid = uuid.New().String()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"uuid": uid})
+}
+
+// handleH5PHubContentTypes handles POST /api/v1/h5p/hub/content-types/ (unauthenticated).
+// Returns the full hub registry in Catharsis format.
+func (h *Handler) handleH5PHubContentTypes(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+
+	registry, err := h.h5pService.GetHubRegistry(r.Context(), h.cfg.CoreURL)
+	if err != nil {
+		slog.Error("Error fetching hub registry", "error", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to fetch content types"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(registry)
+}
+
+// handleH5PHubContentTypeDownload handles GET /api/v1/h5p/hub/content-types/{machineName} (unauthenticated).
+// Returns the .h5p package for an already-installed library.
+func (h *Handler) handleH5PHubContentTypeDownload(w http.ResponseWriter, r *http.Request, machineName string) {
+	data, err := h.h5pService.GetLibraryPackage(r.Context(), machineName)
+	if err != nil {
+		slog.Debug("Library package not found", "machineName", machineName, "error", err)
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+machineName+".h5p\"")
+	w.Write(data)
 }
 
 // handleH5POrgLibraryEnable enables a library for an organisation

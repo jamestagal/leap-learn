@@ -42,9 +42,13 @@ func Run(apiHandler *Handler) *http.Server {
 	mux.HandleFunc("/api/v1/h5p/content-type-cache", apiHandler.handleH5PContentTypeCache)
 	mux.HandleFunc("/api/v1/h5p/install", apiHandler.handleH5PInstall)
 	mux.HandleFunc("/api/v1/h5p/libraries", apiHandler.handleH5PLibraries)
-	mux.HandleFunc("/api/v1/h5p/libraries/", apiHandler.handleH5PDeleteLibrary)
+	mux.HandleFunc("/api/v1/h5p/libraries/", apiHandler.handleH5PLibraryRoute)
 	mux.HandleFunc("/api/v1/h5p/org-libraries/enable", apiHandler.handleH5POrgLibraryEnable)
 	mux.HandleFunc("/api/v1/h5p/org-libraries/disable", apiHandler.handleH5POrgLibraryDisable)
+
+	// H5P Hub API (Catharsis format — unauthenticated, used by H5P editor)
+	mux.HandleFunc("/api/v1/h5p/hub/register", apiHandler.handleH5PHubRegister)
+	mux.HandleFunc("/api/v1/h5p/hub/content-types/", apiHandler.handleH5PHubContentTypesRoute)
 
 	// Cron jobs
 	mux.HandleFunc("/tasks/delete-tokens", apiHandler.handleTasksDeleteTokens)
