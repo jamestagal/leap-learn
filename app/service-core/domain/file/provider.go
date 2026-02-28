@@ -11,14 +11,14 @@ type File struct {
 	Data        []byte
 }
 
-type provider interface {
+type Provider interface {
 	Upload(ctx context.Context, file *File) error
 	Download(ctx context.Context, fileKey string) ([]byte, error)
 	Remove(ctx context.Context, fileKey string) error
 }
 
 //nolint:ireturn
-func NewProvider(cfg *config.Config) provider {
+func NewProvider(cfg *config.Config) Provider {
 	switch cfg.FileProvider {
 	case "r2":
 		return newR2Provider(cfg)

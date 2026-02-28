@@ -13,6 +13,8 @@ import (
 	"service-core/config"
 	"service-core/domain/billing"
 	"service-core/domain/email"
+	"service-core/domain/file"
+	"service-core/domain/h5p"
 	"service-core/domain/login"
 	"service-core/domain/user"
 	"service-core/grpc"
@@ -77,6 +79,8 @@ func setupRESTHandlers(cfg *config.Config, storage *storage.Storage) *rest.Handl
 	emailService := email.NewService(cfg, emailProvider)
 	loginService := login.NewService(cfg, store, authService, emailService)
 	billingService := billing.NewService(cfg, store)
+	fileProvider := file.NewProvider(cfg)
+	h5pService := h5p.NewService(cfg, store, fileProvider)
 
 	apiHandler := rest.NewHandler(
 		cfg,
@@ -84,6 +88,7 @@ func setupRESTHandlers(cfg *config.Config, storage *storage.Storage) *rest.Handl
 		authService,
 		loginService,
 		billingService,
+		h5pService,
 	)
 	return apiHandler
 }

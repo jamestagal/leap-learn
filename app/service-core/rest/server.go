@@ -38,6 +38,14 @@ func Run(apiHandler *Handler) *http.Server {
 	mux.HandleFunc("/api/v1/billing/sync-session", apiHandler.handleBillingSyncSession)
 	mux.HandleFunc("/api/v1/billing/webhook", apiHandler.handleBillingWebhook)
 
+	// H5P Library Management
+	mux.HandleFunc("/api/v1/h5p/content-type-cache", apiHandler.handleH5PContentTypeCache)
+	mux.HandleFunc("/api/v1/h5p/install", apiHandler.handleH5PInstall)
+	mux.HandleFunc("/api/v1/h5p/libraries", apiHandler.handleH5PLibraries)
+	mux.HandleFunc("/api/v1/h5p/libraries/", apiHandler.handleH5PDeleteLibrary)
+	mux.HandleFunc("/api/v1/h5p/org-libraries/enable", apiHandler.handleH5POrgLibraryEnable)
+	mux.HandleFunc("/api/v1/h5p/org-libraries/disable", apiHandler.handleH5POrgLibraryDisable)
+
 	// Cron jobs
 	mux.HandleFunc("/tasks/delete-tokens", apiHandler.handleTasksDeleteTokens)
 

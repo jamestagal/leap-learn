@@ -37,7 +37,8 @@
 		{ label: 'Dashboard', url: `/${organisationSlug}`, icon: NAV_FEATURES.dashboard.icon, color: NAV_FEATURES.dashboard.color },
 		{ label: 'Clients', url: `/${organisationSlug}/clients`, icon: FEATURES.clients.icon, color: FEATURES.clients.color },
 		{ label: 'Forms', url: `/${organisationSlug}/forms`, icon: FEATURES.forms.icon, color: FEATURES.forms.color },
-		{ label: 'Reports', url: `/${organisationSlug}/reports`, icon: FEATURES.reports.icon, color: FEATURES.reports.color }
+		{ label: 'Reports', url: `/${organisationSlug}/reports`, icon: FEATURES.reports.icon, color: FEATURES.reports.color },
+		{ label: 'Libraries', url: `/${organisationSlug}/libraries`, icon: FEATURES.libraries.icon, color: FEATURES.libraries.color }
 	]);
 
 	// Admin navigation (only shown to owner/admin)

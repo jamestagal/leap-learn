@@ -11,6 +11,7 @@ import {
 	Users,
 	Send,
 	ChartColumnBig,
+	BookOpen,
 } from "lucide-svelte";
 import type { ComponentType } from "svelte";
 
@@ -28,7 +29,8 @@ export interface FeatureConfig {
 export type FeatureKey =
 	| "forms"
 	| "clients"
-	| "reports";
+	| "reports"
+	| "libraries";
 
 /**
  * Core feature configurations with consistent icons and colors
@@ -57,6 +59,14 @@ export const FEATURES: Record<FeatureKey, FeatureConfig> = {
 		icon: ChartColumnBig,
 		color: "#f59e0b", // Amber
 		colorLight: "#f59e0b15",
+	},
+	libraries: {
+		key: "libraries",
+		title: "Libraries",
+		description: "Browse, install, and manage H5P interactive content types.",
+		icon: BookOpen,
+		color: "#8b5cf6", // Violet
+		colorLight: "#8b5cf615",
 	},
 };
 

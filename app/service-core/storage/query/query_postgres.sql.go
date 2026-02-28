@@ -8,9 +8,12 @@ package query
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
+	"github.com/sqlc-dev/pqtype"
 )
 
 const acceptPendingMemberships = `-- name: AcceptPendingMemberships :exec
@@ -22,12 +25,88 @@ func (q *Queries) AcceptPendingMemberships(ctx context.Context, userID uuid.UUID
 	return err
 }
 
+const countH5PLibraries = `-- name: CountH5PLibraries :one
+SELECT count(*) FROM h5p_libraries
+`
+
+func (q *Queries) CountH5PLibraries(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countH5PLibraries)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteExpiredH5PHubCache = `-- name: DeleteExpiredH5PHubCache :exec
+DELETE FROM h5p_hub_cache WHERE expires_at < CURRENT_TIMESTAMP
+`
+
+func (q *Queries) DeleteExpiredH5PHubCache(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredH5PHubCache)
+	return err
+}
+
+const deleteH5PLibrary = `-- name: DeleteH5PLibrary :exec
+DELETE FROM h5p_libraries WHERE id = $1
+`
+
+func (q *Queries) DeleteH5PLibrary(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteH5PLibrary, id)
+	return err
+}
+
+const deleteH5PLibraryByMachineName = `-- name: DeleteH5PLibraryByMachineName :exec
+DELETE FROM h5p_libraries WHERE machine_name = $1
+`
+
+func (q *Queries) DeleteH5PLibraryByMachineName(ctx context.Context, machineName string) error {
+	_, err := q.db.ExecContext(ctx, deleteH5PLibraryByMachineName, machineName)
+	return err
+}
+
+const deleteH5PLibraryDependencies = `-- name: DeleteH5PLibraryDependencies :exec
+DELETE FROM h5p_library_dependencies WHERE library_id = $1
+`
+
+func (q *Queries) DeleteH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteH5PLibraryDependencies, libraryID)
+	return err
+}
+
+const deleteH5POrgLibrary = `-- name: DeleteH5POrgLibrary :exec
+DELETE FROM h5p_org_libraries WHERE org_id = $1 AND library_id = $2
+`
+
+type DeleteH5POrgLibraryParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	LibraryID uuid.UUID `json:"library_id"`
+}
+
+func (q *Queries) DeleteH5POrgLibrary(ctx context.Context, arg DeleteH5POrgLibraryParams) error {
+	_, err := q.db.ExecContext(ctx, deleteH5POrgLibrary, arg.OrgID, arg.LibraryID)
+	return err
+}
+
 const deleteTokens = `-- name: DeleteTokens :exec
 delete from tokens where expires < current_timestamp
 `
 
 func (q *Queries) DeleteTokens(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteTokens)
+	return err
+}
+
+const disableH5POrgLibrary = `-- name: DisableH5POrgLibrary :exec
+UPDATE h5p_org_libraries SET enabled = false
+WHERE org_id = $1 AND library_id = $2
+`
+
+type DisableH5POrgLibraryParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	LibraryID uuid.UUID `json:"library_id"`
+}
+
+func (q *Queries) DisableH5POrgLibrary(ctx context.Context, arg DisableH5POrgLibraryParams) error {
+	_, err := q.db.ExecContext(ctx, disableH5POrgLibrary, arg.OrgID, arg.LibraryID)
 	return err
 }
 
@@ -44,6 +123,273 @@ WHERE id = $1
 func (q *Queries) DowngradeOrganisationToFree(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.ExecContext(ctx, downgradeOrganisationToFree, id)
 	return err
+}
+
+const enableH5POrgLibrary = `-- name: EnableH5POrgLibrary :exec
+INSERT INTO h5p_org_libraries (id, org_id, library_id, enabled)
+VALUES ($1, $2, $3, true)
+ON CONFLICT (org_id, library_id)
+DO UPDATE SET enabled = true
+`
+
+type EnableH5POrgLibraryParams struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	LibraryID uuid.UUID `json:"library_id"`
+}
+
+func (q *Queries) EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error {
+	_, err := q.db.ExecContext(ctx, enableH5POrgLibrary, arg.ID, arg.OrgID, arg.LibraryID)
+	return err
+}
+
+const getH5PHubCache = `-- name: GetH5PHubCache :one
+
+SELECT id, created_at, cache_key, data, expires_at FROM h5p_hub_cache
+WHERE cache_key = $1 AND expires_at > CURRENT_TIMESTAMP
+`
+
+// =============================================================================
+// H5P Hub Cache
+// =============================================================================
+func (q *Queries) GetH5PHubCache(ctx context.Context, cacheKey string) (H5pHubCache, error) {
+	row := q.db.QueryRowContext(ctx, getH5PHubCache, cacheKey)
+	var i H5pHubCache
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.CacheKey,
+		&i.Data,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getH5PLibrary = `-- name: GetH5PLibrary :one
+
+SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries WHERE id = $1
+`
+
+// =============================================================================
+// H5P Libraries (Platform-wide)
+// =============================================================================
+func (q *Queries) GetH5PLibrary(ctx context.Context, id uuid.UUID) (H5pLibrary, error) {
+	row := q.db.QueryRowContext(ctx, getH5PLibrary, id)
+	var i H5pLibrary
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MachineName,
+		&i.MajorVersion,
+		&i.MinorVersion,
+		&i.PatchVersion,
+		&i.Title,
+		&i.Origin,
+		&i.MetadataJson,
+		pq.Array(&i.Categories),
+		pq.Array(&i.Keywords),
+		pq.Array(&i.Screenshots),
+		&i.Description,
+		&i.IconPath,
+		&i.PackagePath,
+		&i.ExtractedPath,
+		&i.Runnable,
+		&i.Restricted,
+	)
+	return i, err
+}
+
+const getH5PLibraryByMachineName = `-- name: GetH5PLibraryByMachineName :one
+SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries
+WHERE machine_name = $1
+ORDER BY major_version DESC, minor_version DESC, patch_version DESC
+LIMIT 1
+`
+
+func (q *Queries) GetH5PLibraryByMachineName(ctx context.Context, machineName string) (H5pLibrary, error) {
+	row := q.db.QueryRowContext(ctx, getH5PLibraryByMachineName, machineName)
+	var i H5pLibrary
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MachineName,
+		&i.MajorVersion,
+		&i.MinorVersion,
+		&i.PatchVersion,
+		&i.Title,
+		&i.Origin,
+		&i.MetadataJson,
+		pq.Array(&i.Categories),
+		pq.Array(&i.Keywords),
+		pq.Array(&i.Screenshots),
+		&i.Description,
+		&i.IconPath,
+		&i.PackagePath,
+		&i.ExtractedPath,
+		&i.Runnable,
+		&i.Restricted,
+	)
+	return i, err
+}
+
+const getH5PLibraryByMachineNameVersion = `-- name: GetH5PLibraryByMachineNameVersion :one
+SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries
+WHERE machine_name = $1
+  AND major_version = $2
+  AND minor_version = $3
+  AND patch_version = $4
+`
+
+type GetH5PLibraryByMachineNameVersionParams struct {
+	MachineName  string `json:"machine_name"`
+	MajorVersion int32  `json:"major_version"`
+	MinorVersion int32  `json:"minor_version"`
+	PatchVersion int32  `json:"patch_version"`
+}
+
+func (q *Queries) GetH5PLibraryByMachineNameVersion(ctx context.Context, arg GetH5PLibraryByMachineNameVersionParams) (H5pLibrary, error) {
+	row := q.db.QueryRowContext(ctx, getH5PLibraryByMachineNameVersion,
+		arg.MachineName,
+		arg.MajorVersion,
+		arg.MinorVersion,
+		arg.PatchVersion,
+	)
+	var i H5pLibrary
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MachineName,
+		&i.MajorVersion,
+		&i.MinorVersion,
+		&i.PatchVersion,
+		&i.Title,
+		&i.Origin,
+		&i.MetadataJson,
+		pq.Array(&i.Categories),
+		pq.Array(&i.Keywords),
+		pq.Array(&i.Screenshots),
+		&i.Description,
+		&i.IconPath,
+		&i.PackagePath,
+		&i.ExtractedPath,
+		&i.Runnable,
+		&i.Restricted,
+	)
+	return i, err
+}
+
+const getH5PLibraryDependencies = `-- name: GetH5PLibraryDependencies :many
+SELECT d.id, d.library_id, d.depends_on_id, d.dependency_type, l.machine_name, l.major_version, l.minor_version, l.patch_version, l.title
+FROM h5p_library_dependencies d
+JOIN h5p_libraries l ON l.id = d.depends_on_id
+WHERE d.library_id = $1
+`
+
+type GetH5PLibraryDependenciesRow struct {
+	ID             uuid.UUID `json:"id"`
+	LibraryID      uuid.UUID `json:"library_id"`
+	DependsOnID    uuid.UUID `json:"depends_on_id"`
+	DependencyType string    `json:"dependency_type"`
+	MachineName    string    `json:"machine_name"`
+	MajorVersion   int32     `json:"major_version"`
+	MinorVersion   int32     `json:"minor_version"`
+	PatchVersion   int32     `json:"patch_version"`
+	Title          string    `json:"title"`
+}
+
+func (q *Queries) GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]GetH5PLibraryDependenciesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getH5PLibraryDependencies, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetH5PLibraryDependenciesRow
+	for rows.Next() {
+		var i GetH5PLibraryDependenciesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LibraryID,
+			&i.DependsOnID,
+			&i.DependencyType,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getH5PLibraryFullDependencyTree = `-- name: GetH5PLibraryFullDependencyTree :many
+WITH RECURSIVE dep_tree AS (
+    SELECT d.depends_on_id AS library_id, d.dependency_type, 0 AS depth
+    FROM h5p_library_dependencies d
+    WHERE d.library_id = $1
+    UNION
+    SELECT d.depends_on_id, d.dependency_type, dt.depth + 1
+    FROM h5p_library_dependencies d
+    JOIN dep_tree dt ON dt.library_id = d.library_id
+    WHERE dt.depth < 20
+)
+SELECT DISTINCT l.id, l.created_at, l.updated_at, l.machine_name, l.major_version, l.minor_version, l.patch_version, l.title, l.origin, l.metadata_json, l.categories, l.keywords, l.screenshots, l.description, l.icon_path, l.package_path, l.extracted_path, l.runnable, l.restricted
+FROM dep_tree dt
+JOIN h5p_libraries l ON l.id = dt.library_id
+`
+
+func (q *Queries) GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error) {
+	rows, err := q.db.QueryContext(ctx, getH5PLibraryFullDependencyTree, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []H5pLibrary
+	for rows.Next() {
+		var i H5pLibrary
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+			&i.Origin,
+			&i.MetadataJson,
+			pq.Array(&i.Categories),
+			pq.Array(&i.Keywords),
+			pq.Array(&i.Screenshots),
+			&i.Description,
+			&i.IconPath,
+			&i.PackagePath,
+			&i.ExtractedPath,
+			&i.Runnable,
+			&i.Restricted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getOrganisationBillingInfo = `-- name: GetOrganisationBillingInfo :one
@@ -141,6 +487,33 @@ func (q *Queries) GetOrganisationByStripeCustomer(ctx context.Context, stripeCus
 	return i, err
 }
 
+const insertH5PLibraryDependency = `-- name: InsertH5PLibraryDependency :exec
+
+INSERT INTO h5p_library_dependencies (id, library_id, depends_on_id, dependency_type)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (library_id, depends_on_id, dependency_type) DO NOTHING
+`
+
+type InsertH5PLibraryDependencyParams struct {
+	ID             uuid.UUID `json:"id"`
+	LibraryID      uuid.UUID `json:"library_id"`
+	DependsOnID    uuid.UUID `json:"depends_on_id"`
+	DependencyType string    `json:"dependency_type"`
+}
+
+// =============================================================================
+// H5P Library Dependencies
+// =============================================================================
+func (q *Queries) InsertH5PLibraryDependency(ctx context.Context, arg InsertH5PLibraryDependencyParams) error {
+	_, err := q.db.ExecContext(ctx, insertH5PLibraryDependency,
+		arg.ID,
+		arg.LibraryID,
+		arg.DependsOnID,
+		arg.DependencyType,
+	)
+	return err
+}
+
 const insertToken = `-- name: InsertToken :one
 insert into tokens (id, expires, target, callback) values ($1, $2, $3, $4) returning id, expires, target, callback
 `
@@ -211,6 +584,239 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 		&i.SuspendedReason,
 	)
 	return i, err
+}
+
+const listH5PLibraries = `-- name: ListH5PLibraries :many
+SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries
+ORDER BY machine_name ASC, major_version DESC, minor_version DESC, patch_version DESC
+`
+
+func (q *Queries) ListH5PLibraries(ctx context.Context) ([]H5pLibrary, error) {
+	rows, err := q.db.QueryContext(ctx, listH5PLibraries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []H5pLibrary
+	for rows.Next() {
+		var i H5pLibrary
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+			&i.Origin,
+			&i.MetadataJson,
+			pq.Array(&i.Categories),
+			pq.Array(&i.Keywords),
+			pq.Array(&i.Screenshots),
+			&i.Description,
+			&i.IconPath,
+			&i.PackagePath,
+			&i.ExtractedPath,
+			&i.Runnable,
+			&i.Restricted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listH5POrgEnabledLibraries = `-- name: ListH5POrgEnabledLibraries :many
+SELECT ol.id, ol.created_at, ol.org_id, ol.library_id, ol.enabled, ol.restricted, l.machine_name, l.major_version, l.minor_version, l.patch_version,
+       l.title, l.description, l.icon_path, l.runnable, l.origin
+FROM h5p_org_libraries ol
+JOIN h5p_libraries l ON l.id = ol.library_id
+WHERE ol.org_id = $1 AND ol.enabled = true
+ORDER BY l.title ASC
+`
+
+type ListH5POrgEnabledLibrariesRow struct {
+	ID           uuid.UUID      `json:"id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	OrgID        uuid.UUID      `json:"org_id"`
+	LibraryID    uuid.UUID      `json:"library_id"`
+	Enabled      bool           `json:"enabled"`
+	Restricted   bool           `json:"restricted"`
+	MachineName  string         `json:"machine_name"`
+	MajorVersion int32          `json:"major_version"`
+	MinorVersion int32          `json:"minor_version"`
+	PatchVersion int32          `json:"patch_version"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	IconPath     sql.NullString `json:"icon_path"`
+	Runnable     bool           `json:"runnable"`
+	Origin       string         `json:"origin"`
+}
+
+func (q *Queries) ListH5POrgEnabledLibraries(ctx context.Context, orgID uuid.UUID) ([]ListH5POrgEnabledLibrariesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listH5POrgEnabledLibraries, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListH5POrgEnabledLibrariesRow
+	for rows.Next() {
+		var i ListH5POrgEnabledLibrariesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.OrgID,
+			&i.LibraryID,
+			&i.Enabled,
+			&i.Restricted,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+			&i.Description,
+			&i.IconPath,
+			&i.Runnable,
+			&i.Origin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listH5POrgLibraries = `-- name: ListH5POrgLibraries :many
+
+SELECT ol.id, ol.created_at, ol.org_id, ol.library_id, ol.enabled, ol.restricted, l.machine_name, l.major_version, l.minor_version, l.patch_version,
+       l.title, l.description, l.icon_path, l.runnable, l.origin
+FROM h5p_org_libraries ol
+JOIN h5p_libraries l ON l.id = ol.library_id
+WHERE ol.org_id = $1
+ORDER BY l.title ASC
+`
+
+type ListH5POrgLibrariesRow struct {
+	ID           uuid.UUID      `json:"id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	OrgID        uuid.UUID      `json:"org_id"`
+	LibraryID    uuid.UUID      `json:"library_id"`
+	Enabled      bool           `json:"enabled"`
+	Restricted   bool           `json:"restricted"`
+	MachineName  string         `json:"machine_name"`
+	MajorVersion int32          `json:"major_version"`
+	MinorVersion int32          `json:"minor_version"`
+	PatchVersion int32          `json:"patch_version"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	IconPath     sql.NullString `json:"icon_path"`
+	Runnable     bool           `json:"runnable"`
+	Origin       string         `json:"origin"`
+}
+
+// =============================================================================
+// H5P Org Libraries (Per-organisation enablement)
+// =============================================================================
+func (q *Queries) ListH5POrgLibraries(ctx context.Context, orgID uuid.UUID) ([]ListH5POrgLibrariesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listH5POrgLibraries, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListH5POrgLibrariesRow
+	for rows.Next() {
+		var i ListH5POrgLibrariesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.OrgID,
+			&i.LibraryID,
+			&i.Enabled,
+			&i.Restricted,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+			&i.Description,
+			&i.IconPath,
+			&i.Runnable,
+			&i.Origin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listH5PRunnableLibraries = `-- name: ListH5PRunnableLibraries :many
+SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries
+WHERE runnable = true
+ORDER BY title ASC
+`
+
+func (q *Queries) ListH5PRunnableLibraries(ctx context.Context) ([]H5pLibrary, error) {
+	rows, err := q.db.QueryContext(ctx, listH5PRunnableLibraries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []H5pLibrary
+	for rows.Next() {
+		var i H5pLibrary
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+			&i.Origin,
+			&i.MetadataJson,
+			pq.Array(&i.Categories),
+			pq.Array(&i.Keywords),
+			pq.Array(&i.Screenshots),
+			&i.Description,
+			&i.IconPath,
+			&i.PackagePath,
+			&i.ExtractedPath,
+			&i.Runnable,
+			&i.Restricted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const selectToken = `-- name: SelectToken :one
@@ -607,4 +1213,135 @@ func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubs
 		arg.CustomerID,
 	)
 	return err
+}
+
+const upsertH5PHubCache = `-- name: UpsertH5PHubCache :one
+INSERT INTO h5p_hub_cache (id, cache_key, data, expires_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (cache_key)
+DO UPDATE SET
+    data = EXCLUDED.data,
+    expires_at = EXCLUDED.expires_at,
+    created_at = CURRENT_TIMESTAMP
+RETURNING id, created_at, cache_key, data, expires_at
+`
+
+type UpsertH5PHubCacheParams struct {
+	ID        uuid.UUID       `json:"id"`
+	CacheKey  string          `json:"cache_key"`
+	Data      json.RawMessage `json:"data"`
+	ExpiresAt time.Time       `json:"expires_at"`
+}
+
+func (q *Queries) UpsertH5PHubCache(ctx context.Context, arg UpsertH5PHubCacheParams) (H5pHubCache, error) {
+	row := q.db.QueryRowContext(ctx, upsertH5PHubCache,
+		arg.ID,
+		arg.CacheKey,
+		arg.Data,
+		arg.ExpiresAt,
+	)
+	var i H5pHubCache
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.CacheKey,
+		&i.Data,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const upsertH5PLibrary = `-- name: UpsertH5PLibrary :one
+INSERT INTO h5p_libraries (
+    id, machine_name, major_version, minor_version, patch_version,
+    title, origin, metadata_json, categories, keywords,
+    screenshots, description, icon_path, package_path, extracted_path,
+    runnable, restricted
+) VALUES (
+    $1, $2, $3, $4, $5,
+    $6, $7, $8, $9, $10,
+    $11, $12, $13, $14, $15,
+    $16, $17
+)
+ON CONFLICT (machine_name, major_version, minor_version, patch_version)
+DO UPDATE SET
+    title = EXCLUDED.title,
+    origin = EXCLUDED.origin,
+    metadata_json = EXCLUDED.metadata_json,
+    categories = EXCLUDED.categories,
+    keywords = EXCLUDED.keywords,
+    screenshots = EXCLUDED.screenshots,
+    description = EXCLUDED.description,
+    icon_path = EXCLUDED.icon_path,
+    package_path = EXCLUDED.package_path,
+    extracted_path = EXCLUDED.extracted_path,
+    runnable = EXCLUDED.runnable,
+    restricted = EXCLUDED.restricted,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted
+`
+
+type UpsertH5PLibraryParams struct {
+	ID            uuid.UUID             `json:"id"`
+	MachineName   string                `json:"machine_name"`
+	MajorVersion  int32                 `json:"major_version"`
+	MinorVersion  int32                 `json:"minor_version"`
+	PatchVersion  int32                 `json:"patch_version"`
+	Title         string                `json:"title"`
+	Origin        string                `json:"origin"`
+	MetadataJson  pqtype.NullRawMessage `json:"metadata_json"`
+	Categories    []string              `json:"categories"`
+	Keywords      []string              `json:"keywords"`
+	Screenshots   []string              `json:"screenshots"`
+	Description   string                `json:"description"`
+	IconPath      sql.NullString        `json:"icon_path"`
+	PackagePath   sql.NullString        `json:"package_path"`
+	ExtractedPath sql.NullString        `json:"extracted_path"`
+	Runnable      bool                  `json:"runnable"`
+	Restricted    bool                  `json:"restricted"`
+}
+
+func (q *Queries) UpsertH5PLibrary(ctx context.Context, arg UpsertH5PLibraryParams) (H5pLibrary, error) {
+	row := q.db.QueryRowContext(ctx, upsertH5PLibrary,
+		arg.ID,
+		arg.MachineName,
+		arg.MajorVersion,
+		arg.MinorVersion,
+		arg.PatchVersion,
+		arg.Title,
+		arg.Origin,
+		arg.MetadataJson,
+		pq.Array(arg.Categories),
+		pq.Array(arg.Keywords),
+		pq.Array(arg.Screenshots),
+		arg.Description,
+		arg.IconPath,
+		arg.PackagePath,
+		arg.ExtractedPath,
+		arg.Runnable,
+		arg.Restricted,
+	)
+	var i H5pLibrary
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MachineName,
+		&i.MajorVersion,
+		&i.MinorVersion,
+		&i.PatchVersion,
+		&i.Title,
+		&i.Origin,
+		&i.MetadataJson,
+		pq.Array(&i.Categories),
+		pq.Array(&i.Keywords),
+		pq.Array(&i.Screenshots),
+		&i.Description,
+		&i.IconPath,
+		&i.PackagePath,
+		&i.ExtractedPath,
+		&i.Runnable,
+		&i.Restricted,
+	)
+	return i, err
 }

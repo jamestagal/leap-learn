@@ -12,15 +12,46 @@ import (
 
 type Querier interface {
 	AcceptPendingMemberships(ctx context.Context, userID uuid.UUID) error
+	CountH5PLibraries(ctx context.Context) (int64, error)
+	DeleteExpiredH5PHubCache(ctx context.Context) error
+	DeleteH5PLibrary(ctx context.Context, id uuid.UUID) error
+	DeleteH5PLibraryByMachineName(ctx context.Context, machineName string) error
+	DeleteH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) error
+	DeleteH5POrgLibrary(ctx context.Context, arg DeleteH5POrgLibraryParams) error
 	DeleteTokens(ctx context.Context) error
+	DisableH5POrgLibrary(ctx context.Context, arg DisableH5POrgLibraryParams) error
 	DowngradeOrganisationToFree(ctx context.Context, id uuid.UUID) error
+	EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error
+	// =============================================================================
+	// H5P Hub Cache
+	// =============================================================================
+	GetH5PHubCache(ctx context.Context, cacheKey string) (H5pHubCache, error)
+	// =============================================================================
+	// H5P Libraries (Platform-wide)
+	// =============================================================================
+	GetH5PLibrary(ctx context.Context, id uuid.UUID) (H5pLibrary, error)
+	GetH5PLibraryByMachineName(ctx context.Context, machineName string) (H5pLibrary, error)
+	GetH5PLibraryByMachineNameVersion(ctx context.Context, arg GetH5PLibraryByMachineNameVersionParams) (H5pLibrary, error)
+	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]GetH5PLibraryDependenciesRow, error)
+	GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error)
 	// =============================================================================
 	// Organisation Billing Queries (Platform Subscriptions)
 	// =============================================================================
 	GetOrganisationBillingInfo(ctx context.Context, id uuid.UUID) (GetOrganisationBillingInfoRow, error)
 	GetOrganisationByStripeCustomer(ctx context.Context, stripeCustomerID string) (Organisation, error)
+	// =============================================================================
+	// H5P Library Dependencies
+	// =============================================================================
+	InsertH5PLibraryDependency(ctx context.Context, arg InsertH5PLibraryDependencyParams) error
 	InsertToken(ctx context.Context, arg InsertTokenParams) (Token, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
+	ListH5PLibraries(ctx context.Context) ([]H5pLibrary, error)
+	ListH5POrgEnabledLibraries(ctx context.Context, orgID uuid.UUID) ([]ListH5POrgEnabledLibrariesRow, error)
+	// =============================================================================
+	// H5P Org Libraries (Per-organisation enablement)
+	// =============================================================================
+	ListH5POrgLibraries(ctx context.Context, orgID uuid.UUID) ([]ListH5POrgLibrariesRow, error)
+	ListH5PRunnableLibraries(ctx context.Context) ([]H5pLibrary, error)
 	SelectToken(ctx context.Context, id string) (Token, error)
 	SelectUser(ctx context.Context, id uuid.UUID) (User, error)
 	SelectUserByCustomerID(ctx context.Context, customerID string) (User, error)
@@ -37,6 +68,8 @@ type Querier interface {
 	UpdateUserPhone(ctx context.Context, arg UpdateUserPhoneParams) error
 	UpdateUserSub(ctx context.Context, arg UpdateUserSubParams) error
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
+	UpsertH5PHubCache(ctx context.Context, arg UpsertH5PHubCacheParams) (H5pHubCache, error)
+	UpsertH5PLibrary(ctx context.Context, arg UpsertH5PLibraryParams) (H5pLibrary, error)
 }
 
 var _ Querier = (*Queries)(nil)
