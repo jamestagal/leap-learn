@@ -30,8 +30,11 @@ func (s *Service) UploadTempFile(ctx context.Context, userID uuid.UUID, filename
 		return nil, pkg.InternalError{Message: "Error uploading temp file", Err: err}
 	}
 
+	// H5P editor convention: return relative path with #tmp suffix.
+	// H5P.getPath() in h5p.js checks for #tmp suffix to use H5PEditor.filesPath as prefix.
+	// If we return a full path, it gets doubled (filesPath + "/" + fullPath).
 	result := &TempFileResult{
-		Path: fmt.Sprintf("/api/h5p/temp-files/%s/%s/%s", userID, tempID, filename),
+		Path: fmt.Sprintf("%s/%s/%s#tmp", userID, tempID, filename),
 		Mime: contentType,
 	}
 

@@ -6,9 +6,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
+	"service-core/domain/file"
 	"service-core/storage/query"
 
 	"github.com/google/uuid"
@@ -256,12 +258,111 @@ func (s *Service) GetContentFile(ctx context.Context, contentID, orgID uuid.UUID
 	return data, contentType, nil
 }
 
+const tempFileSuffix = "#tmp"
+
+// migrateTempFiles scans params for temp file references (paths ending with #tmp),
+// copies them to permanent content storage, and returns updated params with rewritten paths.
+// Also returns the list of temp R2 keys to clean up after a successful save.
+func (s *Service) migrateTempFiles(ctx context.Context, orgID, contentID uuid.UUID, params json.RawMessage) (json.RawMessage, []string, error) {
+	paramsStr := string(params)
+
+	// Fast path: no temp refs at all
+	if !strings.Contains(paramsStr, tempFileSuffix) {
+		return params, nil, nil
+	}
+
+	// Collect unique temp paths
+	replacements := make(map[string]string) // old path → new path
+	var tempKeys []string
+
+	searchFrom := 0
+	for {
+		idx := strings.Index(paramsStr[searchFrom:], tempFileSuffix)
+		if idx == -1 {
+			break
+		}
+
+		// Walk backwards from #tmp to find the start of the path (after a ")
+		pathEnd := searchFrom + idx + len(tempFileSuffix)
+		pathStart := strings.LastIndex(paramsStr[:searchFrom+idx], `"`)
+		if pathStart == -1 {
+			searchFrom = pathEnd
+			continue
+		}
+		pathStart++ // skip the opening "
+
+		oldPath := paramsStr[pathStart:pathEnd]
+		searchFrom = pathEnd
+
+		// Skip if already processed
+		if _, done := replacements[oldPath]; done {
+			continue
+		}
+
+		// Strip #tmp suffix to get the relative path: {userID}/{tempID}/{filename}
+		relPath := strings.TrimSuffix(oldPath, tempFileSuffix)
+		parts := strings.SplitN(relPath, "/", 3)
+		if len(parts) != 3 {
+			slog.Warn("Malformed temp file path, skipping", "path", oldPath)
+			continue
+		}
+		userID, tempID, filename := parts[0], parts[1], parts[2]
+
+		// Download from temp storage
+		srcKey := fmt.Sprintf("h5p-temp/%s/%s/%s", userID, tempID, filename)
+		data, err := s.fileProvider.Download(ctx, srcKey)
+		if err != nil {
+			slog.Warn("Failed to download temp file, skipping", "key", srcKey, "error", err)
+			continue
+		}
+
+		// Upload to permanent content storage
+		permName := tempID + "_" + filename
+		dstKey := fmt.Sprintf("h5p-content/%s/%s/%s", orgID, contentID, permName)
+		err = s.fileProvider.Upload(ctx, &file.File{
+			Key:         dstKey,
+			ContentType: detectContentType(filename),
+			Data:        data,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("uploading to permanent storage: %w", err)
+		}
+
+		// Store just the filename in params. H5P.getPath() will prepend contentUrl.
+		replacements[oldPath] = permName
+		tempKeys = append(tempKeys, srcKey)
+	}
+
+	// Apply replacements
+	for old, new_ := range replacements {
+		paramsStr = strings.ReplaceAll(paramsStr, old, new_)
+	}
+
+	return json.RawMessage(paramsStr), tempKeys, nil
+}
+
+// cleanupTempFiles removes temp files from R2 on a best-effort basis.
+func (s *Service) cleanupTempFiles(ctx context.Context, keys []string) {
+	for _, key := range keys {
+		if err := s.fileProvider.Remove(ctx, key); err != nil {
+			slog.Warn("Failed to remove temp file", "key", key, "error", err)
+		}
+	}
+}
+
 // SaveContentFromEditor saves content from the H5P editor, moving temp files to permanent storage
 func (s *Service) SaveContentFromEditor(ctx context.Context, orgID, userID, contentID uuid.UUID, libraryName string, params json.RawMessage, title string) (*ContentInfo, error) {
 	// Resolve library
 	lib, err := s.store.GetH5PLibraryByMachineName(ctx, libraryName)
 	if err != nil {
 		return nil, pkg.NotFoundError{Message: fmt.Sprintf("Library %s not found", libraryName), Err: err}
+	}
+
+	// Migrate temp files to permanent storage BEFORE the DB save
+	// so the stored params always contain permanent paths.
+	savedParams, tempKeys, err := s.migrateTempFiles(ctx, orgID, contentID, params)
+	if err != nil {
+		return nil, pkg.InternalError{Message: "Error migrating temp files", Err: err}
 	}
 
 	// Check if content already exists (update) or not (create)
@@ -283,7 +384,7 @@ func (s *Service) SaveContentFromEditor(ctx context.Context, orgID, userID, cont
 			Title:       title,
 			Slug:        slug,
 			Description: "",
-			ContentJson: params,
+			ContentJson: savedParams,
 			Tags:        []string{},
 			FolderPath:  sql.NullString{},
 			StoragePath: sql.NullString{String: storagePath, Valid: true},
@@ -300,7 +401,7 @@ func (s *Service) SaveContentFromEditor(ctx context.Context, orgID, userID, cont
 			OrgID:       orgID,
 			Title:       title,
 			Description: existing.Description,
-			ContentJson: params,
+			ContentJson: savedParams,
 			Tags:        existing.Tags,
 			Status:      existing.Status,
 		})
@@ -309,8 +410,10 @@ func (s *Service) SaveContentFromEditor(ctx context.Context, orgID, userID, cont
 		}
 	}
 
-	// TODO: Move temp files referenced in params to permanent content storage
-	// This will be implemented when the frontend temp file flow is tested
+	// Clean up temp files after successful save (best-effort)
+	if len(tempKeys) > 0 {
+		go s.cleanupTempFiles(context.Background(), tempKeys)
+	}
 
 	return &ContentInfo{
 		ID:             existing.ID,

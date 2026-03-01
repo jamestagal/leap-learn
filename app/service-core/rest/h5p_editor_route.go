@@ -124,14 +124,16 @@ func (h *Handler) handleEditorLibraryDetail(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(detail)
 }
 
-// handleEditorLibrariesBulk returns basic info for multiple libraries (wrapped)
+// handleEditorLibrariesBulk returns basic info for multiple libraries (unwrapped array)
 func (h *Handler) handleEditorLibrariesBulk(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
+		slog.Error("handleEditorLibrariesBulk: ParseForm error", "error", err)
 		writeAjaxError(w, http.StatusBadRequest, "Invalid form data")
 		return
 	}
 
 	libraries := r.Form["libraries[]"]
+	slog.Info("handleEditorLibrariesBulk", "libraries[]", libraries, "formKeys", len(r.Form))
 	if len(libraries) == 0 {
 		// Try JSON body fallback
 		var body struct {
@@ -139,6 +141,7 @@ func (h *Handler) handleEditorLibrariesBulk(w http.ResponseWriter, r *http.Reque
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
 			libraries = body.Libraries
+			slog.Info("handleEditorLibrariesBulk: JSON fallback", "libraries", libraries)
 		}
 	}
 
@@ -149,7 +152,10 @@ func (h *Handler) handleEditorLibrariesBulk(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	writeAjaxSuccess(w, results)
+	// H5P editor JS (h5peditor-library-list-cache.js) expects a plain array,
+	// NOT wrapped in {success, data}. It iterates data[i].uberName directly.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
 }
 
 // handleEditorTranslations returns translations for multiple libraries (wrapped)
@@ -625,28 +631,27 @@ func (h *Handler) handleContentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse: /api/v1/h5p/content-files/{contentId}/{filepath...}
+	// Parse: /api/v1/h5p/content-files/{orgId}/{contentId}/{filepath...}
 	suffix := strings.TrimPrefix(r.URL.Path, "/api/v1/h5p/content-files/")
-	parts := strings.SplitN(suffix, "/", 2)
-	if len(parts) < 2 {
+	parts := strings.SplitN(suffix, "/", 3)
+	if len(parts) < 3 {
 		http.NotFound(w, r)
 		return
 	}
 
-	contentID, err := uuid.Parse(parts[0])
+	orgID, err := uuid.Parse(parts[0])
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 
-	orgIDStr := r.URL.Query().Get("orgId")
-	orgID, err := uuid.Parse(orgIDStr)
+	contentID, err := uuid.Parse(parts[1])
 	if err != nil {
-		http.Error(w, "orgId query parameter is required", http.StatusBadRequest)
+		http.NotFound(w, r)
 		return
 	}
 
-	filePath := parts[1]
+	filePath := parts[2]
 	data, contentType, err := h.h5pService.GetContentFile(r.Context(), contentID, orgID, filePath)
 	if err != nil {
 		http.NotFound(w, r)

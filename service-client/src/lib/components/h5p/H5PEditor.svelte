@@ -11,7 +11,7 @@
 		onSave: (info: ContentInfo) => void;
 	};
 
-	let { contentId, contentParams, onSave }: Props = $props();
+	let { contentId, organisationId, contentParams, onSave }: Props = $props();
 
 	// --- State ---
 	let phase = $state<"loading" | "ready" | "error">("loading");
@@ -255,8 +255,21 @@
 						confirmLabel: "Confirm",
 					},
 				},
-				editor: {
+				// When editing existing content, set contentUrl so H5P.getPath()
+			// resolves saved file paths correctly (instead of using temp filesPath)
+			...(isEditMode && organisationId
+				? {
+						contents: {
+							[`cid-${contentId}`]: {
+								contentUrl: `/api/h5p/content-files/${organisationId}/${contentId}`,
+							},
+						},
+					}
+				: {}),
+			editor: {
 					filesPath: "/api/h5p/temp-files",
+					// Tell the editor the content ID so H5PEditor.contentId is set
+					...(isEditMode ? { nodeVersionId: contentId } : {}),
 					fileIcon: {
 						path: "/h5p/editor/images/binary-file.png",
 						width: 50,

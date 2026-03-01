@@ -142,7 +142,14 @@
       "Bash(git check-ignore:*)",
       "Bash(go list:*)",
       "Bash(node:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(gh api repos/jamestagal/leap-learn/commits?sha=main&per_page=10 --jq '.[].sha')",
+      "Bash(gh api \"repos/jamestagal/leap-learn/commits?sha=main&per_page=10\" --jq '.[].sha')",
+      "Bash(gh api repos/jamestagal/leap-learn/secret-scanning/alerts --jq '.[] | {number: .number, secret_type: .secret_type_display_name, state: .state, location: .locations_url}')",
+      "Bash(gh auth status)",
+      "Bash(mkdir:*)",
+      "WebFetch(domain:h5p.org)",
+      "Bash(git:*)"
     ]
   }
 }
