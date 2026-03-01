@@ -216,6 +216,8 @@ create table if not exists courses (
     description text not null default '',
     cover_image text,
     status varchar(20) not null default 'draft',
+    published_at timestamptz,
+    archived_at timestamptz,
     deleted_at timestamptz,
     unique (org_id, slug),
     constraint valid_course_status check (status in ('draft', 'published', 'archived'))
@@ -230,6 +232,8 @@ create table if not exists course_items (
     sort_order integer not null default 0,
     title text not null default '',
     item_type varchar(20) not null default 'h5p',
+    removed_at timestamptz,
+    body_markdown text,
     constraint valid_item_type check (item_type in ('h5p', 'text', 'video', 'link'))
 );
 

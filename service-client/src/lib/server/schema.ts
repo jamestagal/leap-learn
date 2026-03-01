@@ -693,6 +693,8 @@ export const courses = pgTable(
 		coverImage: text("cover_image"),
 
 		status: varchar("status", { length: 20 }).notNull().default("draft"),
+		publishedAt: timestamp("published_at", { withTimezone: true }),
+		archivedAt: timestamp("archived_at", { withTimezone: true }),
 		deletedAt: timestamp("deleted_at", { withTimezone: true }),
 	},
 	(table) => ({
@@ -718,6 +720,8 @@ export const courseItems = pgTable(
 		sortOrder: integer("sort_order").notNull().default(0),
 		title: text("title").notNull().default(""),
 		itemType: varchar("item_type", { length: 20 }).notNull().default("h5p"),
+		removedAt: timestamp("removed_at", { withTimezone: true }),
+		bodyMarkdown: text("body_markdown"),
 	},
 	(table) => ({
 		courseIdx: index("course_items_course_idx").on(table.courseId),

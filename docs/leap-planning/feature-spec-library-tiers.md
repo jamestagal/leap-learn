@@ -3,6 +3,7 @@
 **Status**: Phase 3 (planned)
 **Target**: leaplearn.io
 **Date**: 2026-02-28
+**Related:** [Phase 3 — Courses & Progress Tracking](../spec/phase-3-courses-progress.md) — course system, enrolment, xAPI (separate spec, can be built in parallel)
 
 ---
 
