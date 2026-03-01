@@ -303,3 +303,57 @@ WHERE id = $1 AND org_id = $2;
 
 -- name: CountH5PContentByOrg :one
 SELECT count(*) FROM h5p_content WHERE org_id = $1 AND deleted_at IS NULL;
+
+-- =============================================================================
+-- XAPI & PROGRESS QUERIES (Phase 3)
+-- =============================================================================
+
+-- name: InsertXapiStatement :one
+INSERT INTO xapi_statements (org_id, user_id, content_id, verb, statement)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: UpsertProgressRecord :exec
+INSERT INTO progress_records (org_id, enrolment_id, content_id, user_id, score, max_score, completion, completed, attempts, time_spent)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9)
+ON CONFLICT (enrolment_id, content_id)
+DO UPDATE SET
+    score = COALESCE(EXCLUDED.score, progress_records.score),
+    max_score = COALESCE(EXCLUDED.max_score, progress_records.max_score),
+    completion = GREATEST(EXCLUDED.completion, progress_records.completion),
+    completed = EXCLUDED.completed OR progress_records.completed,
+    attempts = progress_records.attempts + 1,
+    time_spent = progress_records.time_spent + EXCLUDED.time_spent,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- name: GetEnrolmentsByUserAndContentId :many
+SELECT e.id, e.org_id, e.course_id, e.user_id, e.status
+FROM enrolments e
+JOIN course_items ci ON ci.course_id = e.course_id
+WHERE e.user_id = $1
+  AND ci.content_id = $2
+  AND e.status = 'active'
+  AND ci.removed_at IS NULL;
+
+-- name: CountCompletedItemsInEnrolment :one
+SELECT COUNT(*) as completed_count
+FROM progress_records pr
+WHERE pr.enrolment_id = $1 AND pr.completed = true;
+
+-- name: CountActiveItemsInCourse :one
+SELECT COUNT(*) as active_count
+FROM course_items ci
+WHERE ci.course_id = $1 AND ci.removed_at IS NULL;
+
+-- name: CompleteEnrolment :exec
+UPDATE enrolments
+SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1;
+
+-- name: GetH5PContentOrgId :one
+SELECT id, org_id FROM h5p_content WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: CheckUserOrgMembership :one
+SELECT id FROM organisation_memberships
+WHERE user_id = $1 AND organisation_id = $2 AND status = 'active'
+LIMIT 1;

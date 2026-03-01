@@ -39,7 +39,9 @@
 		{ label: 'Forms', url: `/${organisationSlug}/forms`, icon: FEATURES.forms.icon, color: FEATURES.forms.color },
 		{ label: 'Reports', url: `/${organisationSlug}/reports`, icon: FEATURES.reports.icon, color: FEATURES.reports.color },
 		{ label: 'Content', url: `/${organisationSlug}/content`, icon: FEATURES.content.icon, color: FEATURES.content.color },
-		{ label: 'Libraries', url: `/${organisationSlug}/libraries`, icon: FEATURES.libraries.icon, color: FEATURES.libraries.color }
+		{ label: 'Libraries', url: `/${organisationSlug}/libraries`, icon: FEATURES.libraries.icon, color: FEATURES.libraries.color },
+		...(canAdmin ? [{ label: 'Courses', url: `/${organisationSlug}/courses`, icon: FEATURES.courses.icon, color: FEATURES.courses.color }] : []),
+		{ label: 'Learn', url: `/${organisationSlug}/learn`, icon: FEATURES.learn.icon, color: FEATURES.learn.color },
 	]);
 
 	// Admin navigation (only shown to owner/admin)

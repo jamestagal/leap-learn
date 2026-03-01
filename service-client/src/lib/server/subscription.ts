@@ -9,8 +9,8 @@
  */
 
 import { db } from "$lib/server/db";
-import { organisations, organisationMemberships } from "$lib/server/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { organisations, organisationMemberships, courses } from "$lib/server/schema";
+import { eq, and, count, sql, isNull } from "drizzle-orm";
 import { error } from "@sveltejs/kit";
 import { getOrganisationContext } from "$lib/server/organisation";
 import { formatDate } from "$lib/utils/formatting";
@@ -23,9 +23,13 @@ export type SubscriptionTier = "free" | "starter" | "growth" | "enterprise";
 
 export interface TierLimits {
 	maxMembers: number; // -1 = unlimited
+	maxCourses: number; // -1 = unlimited
 	maxAIGenerationsPerMonth: number; // -1 = unlimited
 	maxTemplates: number; // -1 = unlimited
 	maxStorageMB: number; // -1 = unlimited
+	maxCustomTypes: number; // -1 = unlimited (library tiers, future)
+	aiCredits: number; // -1 = unlimited (AI generation, future)
+	maxLearners: number | null; // null = unlimited; only set for enterprise contracts
 	features: TierFeature[];
 }
 
@@ -44,23 +48,35 @@ export type TierFeature =
 export const TIER_DEFINITIONS: Record<SubscriptionTier, TierLimits> = {
 	free: {
 		maxMembers: 1,
+		maxCourses: 5,
 		maxAIGenerationsPerMonth: 5,
 		maxTemplates: 3,
-		maxStorageMB: 100,
+		maxStorageMB: 2048, // 2GB
+		maxCustomTypes: 0,
+		aiCredits: 0,
+		maxLearners: null, // unlimited
 		features: ["ai_proposal_generation"],
 	},
 	starter: {
 		maxMembers: 3,
+		maxCourses: 20,
 		maxAIGenerationsPerMonth: 25,
 		maxTemplates: 5,
-		maxStorageMB: 1024, // 1GB
+		maxStorageMB: 10240, // 10GB
+		maxCustomTypes: 0,
+		aiCredits: 50,
+		maxLearners: null,
 		features: ["ai_proposal_generation"],
 	},
 	growth: {
 		maxMembers: 10,
+		maxCourses: 100,
 		maxAIGenerationsPerMonth: 100,
 		maxTemplates: 20,
-		maxStorageMB: 10240, // 10GB
+		maxStorageMB: 51200, // 50GB
+		maxCustomTypes: 10,
+		aiCredits: 200,
+		maxLearners: null,
 		features: [
 			"custom_branding",
 			"analytics",
@@ -71,9 +87,13 @@ export const TIER_DEFINITIONS: Record<SubscriptionTier, TierLimits> = {
 	},
 	enterprise: {
 		maxMembers: -1,
+		maxCourses: -1,
 		maxAIGenerationsPerMonth: -1,
 		maxTemplates: -1,
 		maxStorageMB: -1,
+		maxCustomTypes: -1,
+		aiCredits: -1,
+		maxLearners: null, // may be set per contract
 		features: [
 			"custom_branding",
 			"analytics",
@@ -298,8 +318,65 @@ export async function incrementAIGenerationCount(organisationId: string): Promis
 
 
 // =============================================================================
+// Course Limit Checking
+// =============================================================================
+
+/**
+ * Get current course count for an organisation (non-deleted courses).
+ */
+export async function getCourseCount(organisationId: string): Promise<number> {
+	const [result] = await db
+		.select({ count: count() })
+		.from(courses)
+		.where(and(eq(courses.orgId, organisationId), isNull(courses.deletedAt)));
+
+	return result?.count ?? 0;
+}
+
+/**
+ * Check if organisation can create more courses.
+ */
+export async function canCreateCourse(organisationId?: string): Promise<{
+	allowed: boolean;
+	current: number;
+	limit: number;
+	unlimited: boolean;
+}> {
+	const context = await getOrganisationContext();
+	const targetOrganisationId = organisationId || context.organisationId;
+
+	const { limits } = await getOrganisationTierLimits();
+	const currentCount = await getCourseCount(targetOrganisationId);
+
+	if (limits.maxCourses === -1) {
+		return { allowed: true, current: currentCount, limit: -1, unlimited: true };
+	}
+
+	return {
+		allowed: currentCount < limits.maxCourses,
+		current: currentCount,
+		limit: limits.maxCourses,
+		unlimited: false,
+	};
+}
+
+// =============================================================================
 // Limit Enforcement Functions (Throws on Violation)
 // =============================================================================
+
+/**
+ * Enforce course creation limit - throws if limit exceeded.
+ */
+export async function enforceCourseLimit(organisationId?: string): Promise<void> {
+	const result = await canCreateCourse(organisationId);
+
+	if (!result.allowed) {
+		throw error(
+			403,
+			`Course limit reached (${result.current}/${result.limit}). Upgrade your plan to create more courses.`,
+		);
+	}
+}
 
 /**
  * Enforce member limit - throws if limit exceeded.

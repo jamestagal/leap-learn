@@ -73,6 +73,17 @@ export const PERMISSIONS = {
 	"addons:edit": ["owner", "admin"],
 	"addons:delete": ["owner"],
 
+	// Courses (Phase 3)
+	"course:create": ["owner", "admin"],
+	"course:edit": ["owner", "admin"],
+	"course:delete": ["owner", "admin"],
+	"course:publish": ["owner", "admin"],
+	"course:view_learners": ["owner", "admin"],
+
+	// Enrolment (Phase 3)
+	"enrolment:enrol": ["owner", "admin", "member"],
+	"enrolment:view_own": ["owner", "admin", "member"],
+
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -349,6 +360,23 @@ export function getPermissionMatrix(): {
 				formatPermission("addons:create", "Create add-ons"),
 				formatPermission("addons:edit", "Edit add-ons"),
 				formatPermission("addons:delete", "Delete add-ons"),
+			],
+		},
+		{
+			category: "Courses",
+			permissions: [
+				formatPermission("course:create", "Create courses"),
+				formatPermission("course:edit", "Edit courses"),
+				formatPermission("course:delete", "Delete courses"),
+				formatPermission("course:publish", "Publish courses"),
+				formatPermission("course:view_learners", "View course learners"),
+			],
+		},
+		{
+			category: "Enrolment",
+			permissions: [
+				formatPermission("enrolment:enrol", "Enrol in courses"),
+				formatPermission("enrolment:view_own", "View own progress"),
 			],
 		},
 	];

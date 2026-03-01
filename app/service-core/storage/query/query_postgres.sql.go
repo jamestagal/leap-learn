@@ -25,6 +25,61 @@ func (q *Queries) AcceptPendingMemberships(ctx context.Context, userID uuid.UUID
 	return err
 }
 
+const checkUserOrgMembership = `-- name: CheckUserOrgMembership :one
+SELECT id FROM organisation_memberships
+WHERE user_id = $1 AND organisation_id = $2 AND status = 'active'
+LIMIT 1
+`
+
+type CheckUserOrgMembershipParams struct {
+	UserID         uuid.UUID `json:"user_id"`
+	OrganisationID uuid.UUID `json:"organisation_id"`
+}
+
+func (q *Queries) CheckUserOrgMembership(ctx context.Context, arg CheckUserOrgMembershipParams) (uuid.UUID, error) {
+	row := q.db.QueryRowContext(ctx, checkUserOrgMembership, arg.UserID, arg.OrganisationID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const completeEnrolment = `-- name: CompleteEnrolment :exec
+UPDATE enrolments
+SET status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+`
+
+func (q *Queries) CompleteEnrolment(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, completeEnrolment, id)
+	return err
+}
+
+const countActiveItemsInCourse = `-- name: CountActiveItemsInCourse :one
+SELECT COUNT(*) as active_count
+FROM course_items ci
+WHERE ci.course_id = $1 AND ci.removed_at IS NULL
+`
+
+func (q *Queries) CountActiveItemsInCourse(ctx context.Context, courseID uuid.UUID) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countActiveItemsInCourse, courseID)
+	var active_count int64
+	err := row.Scan(&active_count)
+	return active_count, err
+}
+
+const countCompletedItemsInEnrolment = `-- name: CountCompletedItemsInEnrolment :one
+SELECT COUNT(*) as completed_count
+FROM progress_records pr
+WHERE pr.enrolment_id = $1 AND pr.completed = true
+`
+
+func (q *Queries) CountCompletedItemsInEnrolment(ctx context.Context, enrolmentID uuid.UUID) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countCompletedItemsInEnrolment, enrolmentID)
+	var completed_count int64
+	err := row.Scan(&completed_count)
+	return completed_count, err
+}
+
 const countH5PContentByOrg = `-- name: CountH5PContentByOrg :one
 SELECT count(*) FROM h5p_content WHERE org_id = $1 AND deleted_at IS NULL
 `
@@ -216,6 +271,58 @@ func (q *Queries) EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibra
 	return err
 }
 
+const getEnrolmentsByUserAndContentId = `-- name: GetEnrolmentsByUserAndContentId :many
+SELECT e.id, e.org_id, e.course_id, e.user_id, e.status
+FROM enrolments e
+JOIN course_items ci ON ci.course_id = e.course_id
+WHERE e.user_id = $1
+  AND ci.content_id = $2
+  AND e.status = 'active'
+  AND ci.removed_at IS NULL
+`
+
+type GetEnrolmentsByUserAndContentIdParams struct {
+	UserID    uuid.UUID     `json:"user_id"`
+	ContentID uuid.NullUUID `json:"content_id"`
+}
+
+type GetEnrolmentsByUserAndContentIdRow struct {
+	ID       uuid.UUID `json:"id"`
+	OrgID    uuid.UUID `json:"org_id"`
+	CourseID uuid.UUID `json:"course_id"`
+	UserID   uuid.UUID `json:"user_id"`
+	Status   string    `json:"status"`
+}
+
+func (q *Queries) GetEnrolmentsByUserAndContentId(ctx context.Context, arg GetEnrolmentsByUserAndContentIdParams) ([]GetEnrolmentsByUserAndContentIdRow, error) {
+	rows, err := q.db.QueryContext(ctx, getEnrolmentsByUserAndContentId, arg.UserID, arg.ContentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetEnrolmentsByUserAndContentIdRow
+	for rows.Next() {
+		var i GetEnrolmentsByUserAndContentIdRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.CourseID,
+			&i.UserID,
+			&i.Status,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getH5PContent = `-- name: GetH5PContent :one
 SELECT id, created_at, updated_at, org_id, library_id, created_by, title, slug, description, content_json, tags, folder_path, storage_path, status, deleted_at FROM h5p_content WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
 `
@@ -245,6 +352,22 @@ func (q *Queries) GetH5PContent(ctx context.Context, arg GetH5PContentParams) (H
 		&i.Status,
 		&i.DeletedAt,
 	)
+	return i, err
+}
+
+const getH5PContentOrgId = `-- name: GetH5PContentOrgId :one
+SELECT id, org_id FROM h5p_content WHERE id = $1 AND deleted_at IS NULL
+`
+
+type GetH5PContentOrgIdRow struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+func (q *Queries) GetH5PContentOrgId(ctx context.Context, id uuid.UUID) (GetH5PContentOrgIdRow, error) {
+	row := q.db.QueryRowContext(ctx, getH5PContentOrgId, id)
+	var i GetH5PContentOrgIdRow
+	err := row.Scan(&i.ID, &i.OrgID)
 	return i, err
 }
 
@@ -696,6 +819,45 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 		&i.Suspended,
 		&i.SuspendedAt,
 		&i.SuspendedReason,
+	)
+	return i, err
+}
+
+const insertXapiStatement = `-- name: InsertXapiStatement :one
+
+INSERT INTO xapi_statements (org_id, user_id, content_id, verb, statement)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, created_at, org_id, user_id, content_id, verb, statement
+`
+
+type InsertXapiStatementParams struct {
+	OrgID     uuid.UUID       `json:"org_id"`
+	UserID    uuid.UUID       `json:"user_id"`
+	ContentID uuid.NullUUID   `json:"content_id"`
+	Verb      string          `json:"verb"`
+	Statement json.RawMessage `json:"statement"`
+}
+
+// =============================================================================
+// XAPI & PROGRESS QUERIES (Phase 3)
+// =============================================================================
+func (q *Queries) InsertXapiStatement(ctx context.Context, arg InsertXapiStatementParams) (XapiStatement, error) {
+	row := q.db.QueryRowContext(ctx, insertXapiStatement,
+		arg.OrgID,
+		arg.UserID,
+		arg.ContentID,
+		arg.Verb,
+		arg.Statement,
+	)
+	var i XapiStatement
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.OrgID,
+		&i.UserID,
+		&i.ContentID,
+		&i.Verb,
+		&i.Statement,
 	)
 	return i, err
 }
@@ -1602,4 +1764,45 @@ func (q *Queries) UpsertH5PLibrary(ctx context.Context, arg UpsertH5PLibraryPara
 		&i.Restricted,
 	)
 	return i, err
+}
+
+const upsertProgressRecord = `-- name: UpsertProgressRecord :exec
+INSERT INTO progress_records (org_id, enrolment_id, content_id, user_id, score, max_score, completion, completed, attempts, time_spent)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9)
+ON CONFLICT (enrolment_id, content_id)
+DO UPDATE SET
+    score = COALESCE(EXCLUDED.score, progress_records.score),
+    max_score = COALESCE(EXCLUDED.max_score, progress_records.max_score),
+    completion = GREATEST(EXCLUDED.completion, progress_records.completion),
+    completed = EXCLUDED.completed OR progress_records.completed,
+    attempts = progress_records.attempts + 1,
+    time_spent = progress_records.time_spent + EXCLUDED.time_spent,
+    updated_at = CURRENT_TIMESTAMP
+`
+
+type UpsertProgressRecordParams struct {
+	OrgID       uuid.UUID      `json:"org_id"`
+	EnrolmentID uuid.UUID      `json:"enrolment_id"`
+	ContentID   uuid.UUID      `json:"content_id"`
+	UserID      uuid.UUID      `json:"user_id"`
+	Score       sql.NullString `json:"score"`
+	MaxScore    sql.NullString `json:"max_score"`
+	Completion  string         `json:"completion"`
+	Completed   bool           `json:"completed"`
+	TimeSpent   int32          `json:"time_spent"`
+}
+
+func (q *Queries) UpsertProgressRecord(ctx context.Context, arg UpsertProgressRecordParams) error {
+	_, err := q.db.ExecContext(ctx, upsertProgressRecord,
+		arg.OrgID,
+		arg.EnrolmentID,
+		arg.ContentID,
+		arg.UserID,
+		arg.Score,
+		arg.MaxScore,
+		arg.Completion,
+		arg.Completed,
+		arg.TimeSpent,
+	)
+	return err
 }

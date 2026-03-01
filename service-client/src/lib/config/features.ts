@@ -13,6 +13,8 @@ import {
 	ChartColumnBig,
 	BookOpen,
 	Puzzle,
+	GraduationCap,
+	LayoutList,
 } from "lucide-svelte";
 import type { ComponentType } from "svelte";
 
@@ -32,7 +34,9 @@ export type FeatureKey =
 	| "clients"
 	| "reports"
 	| "content"
-	| "libraries";
+	| "libraries"
+	| "courses"
+	| "learn";
 
 /**
  * Core feature configurations with consistent icons and colors
@@ -77,6 +81,22 @@ export const FEATURES: Record<FeatureKey, FeatureConfig> = {
 		icon: BookOpen,
 		color: "#8b5cf6", // Violet
 		colorLight: "#8b5cf615",
+	},
+	courses: {
+		key: "courses",
+		title: "Courses",
+		description: "Create and manage learning courses with H5P content.",
+		icon: LayoutList,
+		color: "#10b981", // Emerald
+		colorLight: "#10b98115",
+	},
+	learn: {
+		key: "learn",
+		title: "Learn",
+		description: "Browse enrolled courses and track your learning progress.",
+		icon: GraduationCap,
+		color: "#6366f1", // Indigo
+		colorLight: "#6366f115",
 	},
 };
 

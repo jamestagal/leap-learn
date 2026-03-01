@@ -130,6 +130,21 @@ interface ItemProgress {
 type ProgressMap = Map<string, ItemProgress>;  // courseItemId → ItemProgress
 ```
 
+### ID Mapping: contentId → courseItemId
+
+The H5P iframe only knows its `contentId` (the H5P content UUID). The DO tracks progress by `courseItemId` (the `course_items` row UUID). These are different — a single H5P content item can appear in multiple courses as different course items.
+
+**The learning player is responsible for this mapping.** When the `/learn/[courseId]/[itemId]` route loads, it has both the `courseItemId` (from the URL) and the `contentId` (from the course item's relation to `h5p_content`). The learning player passes both IDs to H5PPlayer, which uses `courseItemId` when posting to the Worker and `contentId` when loading H5P content for playback.
+
+```
+Learning player route loads:
+  courseItem.id       → courseItemId (for xAPI posts to Worker)
+  courseItem.contentId → contentId  (for H5P iframe src)
+  enrolment.id       → enrolmentId (for Worker routing to correct DO)
+```
+
+**Frontend requirement:** The learning player route (`/learn/[courseId]/[itemId]`) MUST load the user's enrolment for this course and pass `enrolmentId` down to H5PPlayer. Without it, the Worker can't route to the correct DO. The `+page.server.ts` should fetch both the course item details and the current user's enrolment in parallel.
+
 ### Class Implementation
 
 ```typescript
@@ -143,10 +158,12 @@ interface Env {
 export class EnrolmentProgressObject extends DurableObject {
     private progress: Map<string, ItemProgress>;
     private enrolmentId: string;
+    private userId: string;               // stored for authorization checks
     private orgId: string;
     private courseId: string;
-    private courseItemIds: string[];       // ordered list of all items in course
+    private courseItemIds: string[];       // ordered list of active items in course
     private pendingSync: boolean = false;
+    private retryCount: number = 0;       // for exponential backoff on sync failures
     private xapiBuffer: XAPIEvent[] = [];  // buffer raw statements for append-only log
 
     constructor(ctx: DurableObjectState, env: Env) {
@@ -155,13 +172,14 @@ export class EnrolmentProgressObject extends DurableObject {
         // Block all requests until state is rehydrated
         ctx.blockConcurrencyWhile(async () => {
             const stored = await ctx.storage.get([
-                'progress', 'enrolmentId', 'orgId', 'courseId', 'courseItemIds'
+                'progress', 'enrolmentId', 'userId', 'orgId', 'courseId', 'courseItemIds'
             ]);
 
             this.progress = stored.get('progress')
                 ? new Map(Object.entries(stored.get('progress') as Record<string, ItemProgress>))
                 : new Map();
             this.enrolmentId = (stored.get('enrolmentId') as string) || '';
+            this.userId = (stored.get('userId') as string) || '';
             this.orgId = (stored.get('orgId') as string) || '';
             this.courseId = (stored.get('courseId') as string) || '';
             this.courseItemIds = (stored.get('courseItemIds') as string[]) || [];
@@ -169,19 +187,27 @@ export class EnrolmentProgressObject extends DurableObject {
     }
 
     // ─── Called once on enrolment creation ───────────────────────────
+    //
+    // NOTE: The DO eagerly initialises empty tracking state for all course items.
+    // This is cheap (in-memory + DO storage only) and enables instant progress reads.
+    // PostgreSQL progress_records are still created LAZILY — only when the first
+    // actual xAPI event arrives via the alarm sync. This matches Phase 3's design
+    // and avoids pre-creating DB rows that may never be needed.
 
     async initialise(params: {
         enrolmentId: string;
+        userId: string;
         orgId: string;
         courseId: string;
         courseItemIds: string[];
     }): Promise<void> {
         this.enrolmentId = params.enrolmentId;
+        this.userId = params.userId;
         this.orgId = params.orgId;
         this.courseId = params.courseId;
         this.courseItemIds = params.courseItemIds;
 
-        // Initialise empty progress for each course item
+        // Initialise empty progress for each course item (DO-side only, not PostgreSQL)
         for (const itemId of params.courseItemIds) {
             if (!this.progress.has(itemId)) {
                 this.progress.set(itemId, {
@@ -199,6 +225,7 @@ export class EnrolmentProgressObject extends DurableObject {
 
         await this.ctx.storage.put({
             enrolmentId: this.enrolmentId,
+            userId: this.userId,
             orgId: this.orgId,
             courseId: this.courseId,
             courseItemIds: this.courseItemIds,
@@ -224,26 +251,41 @@ export class EnrolmentProgressObject extends DurableObject {
     }
 
     // ─── Called when teacher removes item from published course ─────
+    //
+    // Removes item from courseItemIds (so it no longer counts toward completion)
+    // but KEEPS the progress entry (preserves credit for completed work).
+    // Matches Phase 3's soft-delete pattern (removed_at timestamp in PostgreSQL).
 
     async removeCourseItem(courseItemId: string): Promise<void> {
         this.courseItemIds = this.courseItemIds.filter(id => id !== courseItemId);
-        this.progress.delete(courseItemId);
+        // Deliberately NOT deleting from this.progress — preserves history
         await this.ctx.storage.put({
             courseItemIds: this.courseItemIds,
-            progress: Object.fromEntries(this.progress),
+            // progress map unchanged — old entries retained for audit
         });
+    }
+
+    // ─── Authorization: verify caller owns this enrolment ───────────
+
+    async verifyOwner(userId: string): Promise<boolean> {
+        return this.userId === userId;
     }
 
     // ─── Core: record an xAPI event ─────────────────────────────────
 
     async recordEvent(event: {
+        userId: string;
         courseItemId: string;
         verb: string;
         score?: number;
         maxScore?: number;
         duration?: number;
         rawStatement: object;
-    }): Promise<{ success: boolean; allCompleted: boolean; progress: ItemProgress }> {
+    }): Promise<{ success: boolean; allCompleted: boolean; progress: ItemProgress | null }> {
+        // Verify caller owns this enrolment
+        if (this.userId && event.userId !== this.userId) {
+            return { success: false, allCompleted: false, progress: null };
+        }
         const current = this.progress.get(event.courseItemId) || {
             score: null, maxScore: null, completion: 0,
             completed: false, attempts: 0, timeSpent: 0,
@@ -289,7 +331,7 @@ export class EnrolmentProgressObject extends DurableObject {
         // Buffer raw xAPI statement for append-only log sync
         this.xapiBuffer.push({
             orgId: this.orgId,
-            userId: '', // set by Worker from JWT before calling DO
+            userId: event.userId,
             contentId: event.courseItemId,
             courseId: this.courseId,
             verb: event.verb,
@@ -341,8 +383,20 @@ export class EnrolmentProgressObject extends DurableObject {
 
     // ─── Alarm: batch sync to PostgreSQL ────────────────────────────
 
+    private static readonly MAX_RETRY_COUNT = 10;
+    private static readonly MAX_BUFFER_SIZE = 500;  // emergency dump if buffer exceeds this
+    private static readonly BACKOFF_INTERVALS = [
+        10_000, 30_000, 60_000, 120_000, 300_000  // 10s, 30s, 1m, 2m, 5m (cap)
+    ];
+
     async alarm(): Promise<void> {
         try {
+            // Emergency: if buffer is too large, persist to DO storage to prevent memory issues
+            if (this.xapiBuffer.length > EnrolmentProgressObject.MAX_BUFFER_SIZE) {
+                await this.ctx.storage.put('xapiBufferOverflow', this.xapiBuffer);
+                console.error(`xAPI buffer overflow (${this.xapiBuffer.length} events) — persisted to DO storage`);
+            }
+
             const syncPayload = {
                 enrolmentId: this.enrolmentId,
                 orgId: this.orgId,
@@ -368,14 +422,32 @@ export class EnrolmentProgressObject extends DurableObject {
                 throw new Error(`Sync failed: ${response.status}`);
             }
 
-            // Clear buffer on successful sync
+            // Success — clear buffer and reset retry state
             this.xapiBuffer = [];
             this.pendingSync = false;
+            this.retryCount = 0;
+            await this.ctx.storage.delete('xapiBufferOverflow');
 
         } catch (error) {
-            // Retry — reschedule alarm with backoff
-            console.error('Progress sync failed, retrying:', error);
-            await this.ctx.storage.setAlarm(Date.now() + 30_000); // 30 second retry
+            this.retryCount++;
+            console.error(`Progress sync failed (attempt ${this.retryCount}):`, error);
+
+            if (this.retryCount >= EnrolmentProgressObject.MAX_RETRY_COUNT) {
+                // Give up retrying — persist buffer to DO storage for manual recovery
+                await this.ctx.storage.put('xapiBufferOverflow', this.xapiBuffer);
+                await this.ctx.storage.put('syncFailedAt', Date.now());
+                console.error(`Progress sync abandoned after ${this.retryCount} retries — buffer persisted`);
+                this.pendingSync = false;
+                return;
+            }
+
+            // Exponential backoff: 10s → 30s → 1m → 2m → 5m (cap)
+            const backoffIndex = Math.min(
+                this.retryCount - 1,
+                EnrolmentProgressObject.BACKOFF_INTERVALS.length - 1
+            );
+            const delay = EnrolmentProgressObject.BACKOFF_INTERVALS[backoffIndex];
+            await this.ctx.storage.setAlarm(Date.now() + delay);
         }
     }
 
@@ -411,10 +483,10 @@ The Cloudflare Worker sits in front of the DOs and handles routing, authenticati
 ```typescript
 // src/worker.ts
 export default {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         const url = new URL(request.url);
 
-        // ─── POST /xapi — record an xAPI event ──────────────
+        // ─── POST /xapi — record a single xAPI event ─────────
         if (url.pathname === '/xapi' && request.method === 'POST') {
             const userId = await authenticateRequest(request, env);
             if (!userId) return new Response('Unauthorized', { status: 401 });
@@ -432,7 +504,9 @@ export default {
             const id = env.ENROLMENT_PROGRESS.idFromName(body.enrolmentId);
             const obj = env.ENROLMENT_PROGRESS.get(id);
 
+            // DO verifies userId matches enrolment owner (see verifyOwner below)
             const result = await obj.recordEvent({
+                userId,
                 courseItemId: body.courseItemId,
                 verb: body.verb,
                 score: body.score,
@@ -441,12 +515,13 @@ export default {
                 rawStatement: body.rawStatement,
             });
 
+            if (!result.success) {
+                return new Response('Forbidden', { status: 403 });
+            }
+
             // If all items completed, trigger enrolment completion
-            // (the alarm sync will also handle this, but immediate
-            //  feedback improves UX)
             if (result.allCompleted) {
-                // Fire-and-forget notification to Go backend
-                env.ctx.waitUntil(
+                ctx.waitUntil(
                     fetch(`${env.GO_BACKEND_URL}/api/v1/internal/enrolments/complete`, {
                         method: 'POST',
                         headers: {
@@ -461,6 +536,55 @@ export default {
             return Response.json(result);
         }
 
+        // ─── POST /xapi/batch — batch xAPI events (sendBeacon path) ──
+        //
+        // sendBeacon cannot set custom headers, so this endpoint
+        // accepts auth via a signed token in the JSON body instead.
+        // The token is a short-lived HMAC of (userId + enrolmentId + timestamp)
+        // generated by the learning player on page load and cached for the session.
+        if (url.pathname === '/xapi/batch' && request.method === 'POST') {
+            const body = await request.json() as {
+                enrolmentId: string;
+                beaconToken: string;  // HMAC(userId:enrolmentId:timestamp, INTERNAL_API_KEY)
+                events: Array<{
+                    courseItemId: string;
+                    verb: string;
+                    score?: number;
+                    maxScore?: number;
+                    duration?: number;
+                    rawStatement: object;
+                }>;
+            };
+
+            // Verify beacon token instead of Authorization header
+            const userId = await verifyBeaconToken(body.beaconToken, body.enrolmentId, env);
+            if (!userId) return new Response('Unauthorized', { status: 401 });
+
+            const id = env.ENROLMENT_PROGRESS.idFromName(body.enrolmentId);
+            const obj = env.ENROLMENT_PROGRESS.get(id);
+
+            // Process each event in sequence (DO handles concurrency)
+            let lastResult: any;
+            for (const event of body.events) {
+                lastResult = await obj.recordEvent({ userId, ...event });
+            }
+
+            if (lastResult?.allCompleted) {
+                ctx.waitUntil(
+                    fetch(`${env.GO_BACKEND_URL}/api/v1/internal/enrolments/complete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${env.INTERNAL_API_KEY}`,
+                        },
+                        body: JSON.stringify({ enrolmentId: body.enrolmentId }),
+                    })
+                );
+            }
+
+            return Response.json({ success: true, processed: body.events.length });
+        }
+
         // ─── GET /progress/:enrolmentId — read progress ─────
         if (url.pathname.startsWith('/progress/') && request.method === 'GET') {
             const userId = await authenticateRequest(request, env);
@@ -470,13 +594,30 @@ export default {
             const id = env.ENROLMENT_PROGRESS.idFromName(enrolmentId);
             const obj = env.ENROLMENT_PROGRESS.get(id);
 
+            // Verify caller owns this enrolment before returning data
+            const isOwner = await obj.verifyOwner(userId);
+            if (!isOwner) return new Response('Forbidden', { status: 403 });
+
             const progress = await obj.getProgress();
             return Response.json(progress);
         }
 
+        // ─── GET /beacon-token/:enrolmentId — get sendBeacon auth token ──
+        //
+        // Called by the learning player on load. Returns a short-lived HMAC
+        // token that can be included in sendBeacon JSON payloads (since
+        // sendBeacon cannot set Authorization headers).
+        if (url.pathname.startsWith('/beacon-token/') && request.method === 'GET') {
+            const userId = await authenticateRequest(request, env);
+            if (!userId) return new Response('Unauthorized', { status: 401 });
+
+            const enrolmentId = url.pathname.split('/beacon-token/')[1];
+            const token = await generateBeaconToken(userId, enrolmentId, env);
+            return Response.json({ token, expiresIn: 3600 }); // 1 hour
+        }
+
         // ─── POST /enrolments/init — initialise DO on enrolment ──
         if (url.pathname === '/enrolments/init' && request.method === 'POST') {
-            // Called by Go backend when enrolment is created
             const internalKey = request.headers.get('Authorization');
             if (internalKey !== `Bearer ${env.INTERNAL_API_KEY}`) {
                 return new Response('Forbidden', { status: 403 });
@@ -484,6 +625,7 @@ export default {
 
             const body = await request.json() as {
                 enrolmentId: string;
+                userId: string;
                 orgId: string;
                 courseId: string;
                 courseItemIds: string[];
@@ -508,7 +650,6 @@ export default {
                 courseItemId: string;
             };
 
-            // Fan out to all enrolled DOs
             const results = await Promise.allSettled(
                 body.enrolmentIds.map(async (enrolmentId) => {
                     const id = env.ENROLMENT_PROGRESS.idFromName(enrolmentId);
@@ -530,6 +671,17 @@ export default {
 
 export { EnrolmentProgressObject };
 ```
+
+### Beacon Token Authentication
+
+`navigator.sendBeacon()` cannot set custom HTTP headers (no `Authorization` header). To authenticate beacon requests, the learning player fetches a short-lived HMAC token on page load via `GET /beacon-token/:enrolmentId` (which uses the normal JWT auth). This token is included in the JSON body of sendBeacon payloads and verified by the Worker's `/xapi/batch` endpoint.
+
+```
+Token = HMAC-SHA256(userId:enrolmentId:timestamp, INTERNAL_API_KEY)
+Validity: 1 hour (covers any reasonable learning session)
+```
+
+This avoids exposing the JWT to sendBeacon while maintaining authentication.
 
 ### Wrangler Configuration
 
@@ -588,14 +740,16 @@ Immediate notification when a student completes all course items. Sets `enrolmen
 When `enrolInCourse` creates an enrolment, it must also initialise the DO:
 
 ```go
-// After inserting enrolment + progress_records in PostgreSQL...
+// After inserting enrolment row in PostgreSQL (NO progress_records pre-created —
+// PostgreSQL rows are created lazily by the sync endpoint on first actual xAPI event)...
 
-// Initialise the Durable Object
+// Initialise the Durable Object (eager init — cheap in-memory + DO storage only)
 _, err = http.Post(
     fmt.Sprintf("%s/enrolments/init", env.PROGRESS_WORKER_URL),
     "application/json",
     marshalJSON(map[string]interface{}{
         "enrolmentId":   enrolment.ID,
+        "userId":        enrolment.UserID,
         "orgId":         enrolment.OrgID,
         "courseId":       enrolment.CourseID,
         "courseItemIds":  courseItemIDs,
@@ -655,17 +809,29 @@ fetch(`${env.PUBLIC_PROGRESS_WORKER_URL}/xapi`, {
 
 ### sendBeacon Fallback
 
-Add `beforeunload` handler for reliability:
+`navigator.sendBeacon()` cannot set custom HTTP headers — so it can't use `Authorization: Bearer`. Instead, the learning player fetches a short-lived beacon token on page load (via `GET /beacon-token/:enrolmentId`, which uses normal JWT auth). This token is included in the JSON body.
 
 ```typescript
-// In LearningPlayer.svelte or H5PPlayer.svelte
+// On learning player mount — fetch beacon token for sendBeacon auth
+let beaconToken: string = '';
+onMount(async () => {
+    const res = await fetch(
+        `${env.PUBLIC_PROGRESS_WORKER_URL}/beacon-token/${enrolment.id}`,
+        { headers: { 'Authorization': `Bearer ${userToken}` } }
+    );
+    const data = await res.json();
+    beaconToken = data.token;
+});
+
+// On tab close — flush pending events via sendBeacon + batch endpoint
 window.addEventListener('beforeunload', () => {
     if (pendingEvents.length > 0) {
         navigator.sendBeacon(
-            `${env.PUBLIC_PROGRESS_WORKER_URL}/xapi`,
+            `${env.PUBLIC_PROGRESS_WORKER_URL}/xapi/batch`,
             new Blob(
                 [JSON.stringify({
                     enrolmentId: currentEnrolment.id,
+                    beaconToken,
                     events: pendingEvents,
                 })],
                 { type: 'application/json' }
@@ -675,7 +841,7 @@ window.addEventListener('beforeunload', () => {
 });
 ```
 
-The Worker would need a `/xapi/batch` endpoint that accepts multiple events in one request for this path.
+The `/xapi/batch` endpoint verifies the beacon token (HMAC-based, 1 hour validity) instead of the Authorization header. See "Beacon Token Authentication" section above.
 
 ### Progress Sidebar
 
@@ -759,7 +925,7 @@ How Phase 4 addresses each Phase 3 limitation:
 | **Completion check race condition** | Local in-memory check in DO, no SQL aggregation needed |
 | **Latency on progress reads** | In-memory read from edge DO, no database round-trip |
 | **Teacher adds item to published course** | Go backend fans out to Worker → DOs add new item to tracking |
-| **Teacher removes item from published course** | Go backend fans out to Worker → DOs remove item, preserve credit for completed work |
+| **Teacher removes item from published course** | Go backend fans out to Worker → DOs remove item from `courseItemIds` (no longer counts toward completion) but preserve progress entry (credit for completed work retained) |
 
 ---
 
@@ -843,20 +1009,21 @@ Remove the Go `POST /api/v1/h5p/xapi` endpoint (or keep it as the internal sync 
 
 | Task | Effort | Dependencies |
 |------|--------|--------------|
-| EnrolmentProgressObject DO class | 4h | None |
-| Worker entry point (routing, auth, endpoints) | 3h | DO class |
+| EnrolmentProgressObject DO class (with ownership checks, backoff) | 5h | None |
+| Worker entry point (routing, auth, /xapi, /xapi/batch, /progress) | 4h | DO class |
+| Beacon token generation + verification | 1h | Worker |
 | Wrangler config + deployment | 1h | Worker |
 | Go internal sync endpoint (`/progress/sync`) | 3h | Phase 3 complete |
 | Go internal completion endpoint | 1h | Phase 3 complete |
-| Go enrolment creation hook (init DO) | 1h | Worker deployed |
+| Go enrolment creation hook (init DO with userId) | 1h | Worker deployed |
 | Go course item modification hooks (fan-out) | 2h | Worker deployed |
-| Frontend: H5PPlayer xAPI → Worker rewrite | 2h | Worker deployed |
-| Frontend: sendBeacon fallback | 1h | xAPI rewrite |
+| Frontend: H5PPlayer xAPI → Worker rewrite (with courseItemId mapping) | 3h | Worker deployed |
+| Frontend: sendBeacon fallback (beacon token flow) | 2h | xAPI rewrite |
 | Frontend: progress sidebar → Worker reads | 2h | Worker deployed |
 | Backfill script for existing enrolments | 2h | Worker deployed |
 | Dual-write validation + testing | 3h | All above |
 | Monitoring integration (sync metrics) | 2h | Sync endpoint |
-| **Total** | **~27h (3–4 days)** | |
+| **Total** | **~32h (4 days)** | |
 
 ---
 
@@ -893,10 +1060,20 @@ For environments with unreliable connectivity (schools in rural areas, developin
 
 ---
 
-## Open Questions
+## Decisions Made
 
-1. **Alarm interval**: 10 seconds is a reasonable default. Should this be configurable per-org (enterprise customers wanting near-real-time teacher dashboards)?
-2. **DO eviction policy**: Cloudflare evicts idle DOs after ~60 seconds. For students who pause for 5 minutes between items, every `recordEvent` call will trigger a cold start (~100ms). Is this acceptable, or should we implement a keep-alive ping?
-3. **Storage costs**: DO storage is billed per GB-month. With one DO per enrolment, a course with 500 students = 500 DOs each storing a small progress map. Estimate storage per DO to validate cost assumptions.
-4. **Batch xAPI endpoint**: Should the Worker support a `/xapi/batch` endpoint for the `sendBeacon` path, accepting multiple events in one request? Recommend yes — minimal implementation cost, significant reliability improvement.
-5. **Progress divergence monitoring**: How aggressively should we check DO ↔ PostgreSQL consistency? A nightly reconciliation job, or real-time comparison on every sync?
+### From spec review
+
+- ✅ **Alarm interval: 10s, not configurable.** Don't add per-org configuration yet — that's complexity for a theoretical need. Revisit if enterprise customers actually ask for near-real-time teacher dashboards.
+- ✅ **DO cold start (~100ms) is acceptable.** No keep-alive pings. They cost money and solve a non-problem. Students won't notice 100ms on the first interaction after a pause.
+- ✅ **Storage costs are negligible.** A progress map per enrolment is ~1-2KB. 500 students × 2KB = 1MB total. At Cloudflare DO storage pricing, this is pennies/month even at scale.
+- ✅ **`/xapi/batch` endpoint: yes, implemented.** Required for sendBeacon path (which can't set Authorization headers). Uses beacon token authentication. See Worker entry point above.
+- ✅ **Nightly reconciliation job for DO ↔ PostgreSQL consistency.** Real-time comparison on every sync is overhead for a problem that shouldn't happen if the code is correct. Nightly job compares a sample of active enrolments (e.g., 100 random) and alerts if divergence > threshold.
+- ✅ **Lazy PostgreSQL, eager DO.** DO eagerly initialises empty tracking state for all course items (cheap in-memory). PostgreSQL progress_records created lazily — only on first sync when actual events arrive. Matches Phase 3's design.
+- ✅ **removeCourseItem preserves progress data.** Removes item from `courseItemIds` (doesn't count toward completion) but keeps the progress entry in the map. Matches Phase 3's soft-delete with `removed_at`.
+- ✅ **userId stored in DO.** Enables ownership verification on `GET /progress` and `POST /xapi` — prevents students from reading/writing other students' progress by guessing enrolment IDs.
+- ✅ **Beacon token for sendBeacon auth.** HMAC-based short-lived token fetched on page load, included in JSON body of sendBeacon payloads. Avoids the limitation that sendBeacon can't set HTTP headers.
+- ✅ **Exponential backoff on sync failures.** 10s → 30s → 1m → 2m → 5m cap. Max 10 retries before persisting buffer to DO storage for manual recovery. Prevents unbounded memory growth if Go backend is down.
+- ✅ **Learning player maps contentId → courseItemId.** The H5P iframe only knows `contentId`; the DO tracks by `courseItemId`. The learning player route has both IDs in scope and passes the correct one to H5PPlayer for Worker calls.
+
+## No remaining open questions — plan is ready for implementation.

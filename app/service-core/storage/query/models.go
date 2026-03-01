@@ -24,18 +24,22 @@ type Course struct {
 	Description string         `json:"description"`
 	CoverImage  sql.NullString `json:"cover_image"`
 	Status      string         `json:"status"`
+	PublishedAt sql.NullTime   `json:"published_at"`
+	ArchivedAt  sql.NullTime   `json:"archived_at"`
 	DeletedAt   sql.NullTime   `json:"deleted_at"`
 }
 
 type CourseItem struct {
-	ID        uuid.UUID     `json:"id"`
-	CreatedAt time.Time     `json:"created_at"`
-	UpdatedAt time.Time     `json:"updated_at"`
-	CourseID  uuid.UUID     `json:"course_id"`
-	ContentID uuid.NullUUID `json:"content_id"`
-	SortOrder int32         `json:"sort_order"`
-	Title     string        `json:"title"`
-	ItemType  string        `json:"item_type"`
+	ID           uuid.UUID      `json:"id"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	CourseID     uuid.UUID      `json:"course_id"`
+	ContentID    uuid.NullUUID  `json:"content_id"`
+	SortOrder    int32          `json:"sort_order"`
+	Title        string         `json:"title"`
+	ItemType     string         `json:"item_type"`
+	RemovedAt    sql.NullTime   `json:"removed_at"`
+	BodyMarkdown sql.NullString `json:"body_markdown"`
 }
 
 type Enrolment struct {

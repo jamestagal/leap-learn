@@ -12,6 +12,10 @@ import (
 
 type Querier interface {
 	AcceptPendingMemberships(ctx context.Context, userID uuid.UUID) error
+	CheckUserOrgMembership(ctx context.Context, arg CheckUserOrgMembershipParams) (uuid.UUID, error)
+	CompleteEnrolment(ctx context.Context, id uuid.UUID) error
+	CountActiveItemsInCourse(ctx context.Context, courseID uuid.UUID) (int64, error)
+	CountCompletedItemsInEnrolment(ctx context.Context, enrolmentID uuid.UUID) (int64, error)
 	CountH5PContentByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountH5PLibraries(ctx context.Context) (int64, error)
 	// =============================================================================
@@ -27,7 +31,9 @@ type Querier interface {
 	DisableH5POrgLibrary(ctx context.Context, arg DisableH5POrgLibraryParams) error
 	DowngradeOrganisationToFree(ctx context.Context, id uuid.UUID) error
 	EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error
+	GetEnrolmentsByUserAndContentId(ctx context.Context, arg GetEnrolmentsByUserAndContentIdParams) ([]GetEnrolmentsByUserAndContentIdRow, error)
 	GetH5PContent(ctx context.Context, arg GetH5PContentParams) (H5pContent, error)
+	GetH5PContentOrgId(ctx context.Context, id uuid.UUID) (GetH5PContentOrgIdRow, error)
 	// =============================================================================
 	// H5P Hub Cache
 	// =============================================================================
@@ -54,6 +60,10 @@ type Querier interface {
 	InsertH5PLibraryDependency(ctx context.Context, arg InsertH5PLibraryDependencyParams) error
 	InsertToken(ctx context.Context, arg InsertTokenParams) (Token, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) (User, error)
+	// =============================================================================
+	// XAPI & PROGRESS QUERIES (Phase 3)
+	// =============================================================================
+	InsertXapiStatement(ctx context.Context, arg InsertXapiStatementParams) (XapiStatement, error)
 	ListH5PContentByOrg(ctx context.Context, arg ListH5PContentByOrgParams) ([]ListH5PContentByOrgRow, error)
 	ListH5PLibraries(ctx context.Context) ([]H5pLibrary, error)
 	ListH5POrgEnabledLibraries(ctx context.Context, orgID uuid.UUID) ([]ListH5POrgEnabledLibrariesRow, error)
@@ -82,6 +92,7 @@ type Querier interface {
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
 	UpsertH5PHubCache(ctx context.Context, arg UpsertH5PHubCacheParams) (H5pHubCache, error)
 	UpsertH5PLibrary(ctx context.Context, arg UpsertH5PLibraryParams) (H5pLibrary, error)
+	UpsertProgressRecord(ctx context.Context, arg UpsertProgressRecordParams) error
 }
 
 var _ Querier = (*Queries)(nil)
