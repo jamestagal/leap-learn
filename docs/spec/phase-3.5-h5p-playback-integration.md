@@ -1,6 +1,6 @@
 # Phase 3.5 — H5P Playback Integration
 
-**Status:** Ready for implementation
+**Status:** Complete (implemented with server-rendered embed approach instead of h5p-standalone)
 **Target:** Immediately after Phase 3 (courses/progress CRUD complete, playback non-functional)
 **Prerequisites:** Phase 3 complete (routes, enrolment, xAPI wiring all in place)
 **Estimate:** ~10h (1.5 days)

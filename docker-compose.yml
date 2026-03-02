@@ -119,6 +119,7 @@ services:
         condition: service_healthy
     volumes:
       - ./service-client/src:/service/src
+      - ./service-client/static:/service/static
       - ./service-client/.svelte-kit:/service/.svelte-kit
       - ./service-client/.env:/service/.env
       - /service/node_modules
