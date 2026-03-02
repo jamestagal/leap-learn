@@ -7,9 +7,9 @@
 		ChevronRight,
 		CheckCircle,
 		Circle,
-		Puzzle,
 		List,
 	} from "lucide-svelte";
+	import H5PPlayer from "$lib/components/h5p/H5PPlayer.svelte";
 
 	let { data }: PageProps = $props();
 	let organisationSlug = $derived(data.organisation.slug);
@@ -35,27 +35,7 @@
 			});
 		} catch (err) {
 			console.error("xAPI send failed:", err);
-			// Buffer for retry
 			xapiBuffer.push({ contentId, verb, statement });
-		}
-	}
-
-	function handleH5PMessage(event: MessageEvent) {
-		// H5P standalone sends xAPI statements via postMessage
-		if (!event.data || typeof event.data !== "object") return;
-		if (event.data.context !== "h5p" && event.data.type !== "xAPI") return;
-
-		const statement = event.data.statement || event.data;
-		if (!statement.verb) return;
-
-		const verb = extractVerb(statement.verb);
-		if (!currentItem.contentId) return;
-
-		sendXapi(currentItem.contentId, verb, statement);
-
-		// If completed, refresh progress
-		if (verb === "completed" || verb === "scored") {
-			setTimeout(() => invalidateAll(), 1000);
 		}
 	}
 
@@ -69,10 +49,7 @@
 	function flushXapiBuffer() {
 		for (const item of xapiBuffer) {
 			try {
-				navigator.sendBeacon(
-					"/api/h5p/xapi",
-					JSON.stringify(item),
-				);
+				navigator.sendBeacon("/api/h5p/xapi", JSON.stringify(item));
 			} catch {
 				// Best effort
 			}
@@ -86,10 +63,7 @@
 	let percentage = $derived(totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0);
 </script>
 
-<svelte:window
-	onmessage={handleH5PMessage}
-	onbeforeunload={flushXapiBuffer}
-/>
+<svelte:window onbeforeunload={flushXapiBuffer} />
 
 <!-- Compact Header -->
 <div class="flex items-center justify-between mb-4">
@@ -128,27 +102,20 @@
 	<!-- Main Content Area -->
 	<div class="flex-1 min-w-0">
 		{#if currentItem.itemType === "h5p" && currentItem.contentId}
-			<!-- H5P Player Container -->
-			<div class="card bg-base-100 border border-base-300 overflow-hidden">
-				<div class="w-full min-h-[500px] flex items-center justify-center bg-base-200/50">
-					<!--
-						H5P content will be loaded here once the H5P play endpoint is available.
-						For now, show a placeholder with a link to the content editor view.
-					-->
-					<div class="text-center p-8">
-						<Puzzle class="h-12 w-12 mx-auto mb-3 opacity-40" />
-						<h3 class="font-semibold mb-1">{currentItem.title}</h3>
-						{#if currentItem.libraryTitle || currentItem.libraryMachineName}
-							<p class="text-sm text-base-content/50 mb-4">
-								{currentItem.libraryTitle || currentItem.libraryMachineName}
-							</p>
-						{/if}
-						<p class="text-sm text-base-content/60">
-							H5P player loading...
-						</p>
-					</div>
-				</div>
-			</div>
+			<!-- H5P Player -->
+			<H5PPlayer
+				contentId={currentItem.contentId}
+				organisationId={course.orgId}
+				onXAPIStatement={(stmt) => {
+					const verb = extractVerb(
+						(stmt as { verb?: { id?: string } | string }).verb ?? "",
+					);
+					if (currentItem.contentId) {
+						sendXapi(currentItem.contentId, verb, stmt);
+					}
+				}}
+				onComplete={() => setTimeout(() => invalidateAll(), 1000)}
+			/>
 		{:else if currentItem.itemType === "text"}
 			<!-- Text Content -->
 			<div class="card bg-base-100 border border-base-300">

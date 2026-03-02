@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"service-core/config"
 	"service-core/domain/file"
 	"service-core/storage/query"
@@ -23,6 +24,7 @@ type store interface {
 	GetH5PLibrary(ctx context.Context, id uuid.UUID) (query.H5pLibrary, error)
 	GetH5PLibraryByMachineName(ctx context.Context, machineName string) (query.H5pLibrary, error)
 	GetH5PLibraryByMachineNameVersion(ctx context.Context, arg query.GetH5PLibraryByMachineNameVersionParams) (query.H5pLibrary, error)
+	GetH5PLibraryByMachineNameMajorMinor(ctx context.Context, arg query.GetH5PLibraryByMachineNameMajorMinorParams) (query.H5pLibrary, error)
 	ListH5PLibraries(ctx context.Context) ([]query.H5pLibrary, error)
 	ListH5PRunnableLibraries(ctx context.Context) ([]query.H5pLibrary, error)
 	UpsertH5PLibrary(ctx context.Context, arg query.UpsertH5PLibraryParams) (query.H5pLibrary, error)
@@ -49,6 +51,9 @@ type store interface {
 	UpdateH5PContent(ctx context.Context, arg query.UpdateH5PContentParams) (query.H5pContent, error)
 	SoftDeleteH5PContent(ctx context.Context, arg query.SoftDeleteH5PContentParams) error
 	CountH5PContentByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
+
+	// Library metadata update
+	UpdateH5PLibraryMetadataJson(ctx context.Context, arg query.UpdateH5PLibraryMetadataJsonParams) error
 
 	// Dependency tree (used by editor)
 	GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]query.H5pLibrary, error)
@@ -220,15 +225,128 @@ func (s *Service) GetLibraryPackage(ctx context.Context, machineName string) ([]
 }
 
 // GetLibraryAsset returns a file from an extracted library (e.g. icon.svg, scripts).
+// It resolves h5p-standalone-style paths (which use {machineName}-{major}.{minor} or
+// just {machineName}) into R2 keys (which use {machineName}-{major}.{minor}.{patch}).
 func (s *Service) GetLibraryAsset(ctx context.Context, assetPath string) ([]byte, string, error) {
+	// Try direct path first (already has full version)
 	key := "h5p-libraries/extracted/" + assetPath
 	data, err := s.fileProvider.Download(ctx, key)
+	if err == nil {
+		contentType := detectContentType(assetPath)
+		return data, contentType, nil
+	}
+
+	// Direct path failed — resolve version from DB.
+	// h5p-standalone requests paths like:
+	//   "H5P.Transition-1.0/library.json"  (machineName-major.minor)
+	//   "H5P.MultiChoice/library.json"      (machineName only, no version)
+	resolved, resolveErr := s.resolveLibraryAssetPath(ctx, assetPath)
+	if resolveErr != nil {
+		return nil, "", pkg.NotFoundError{Message: "Asset not found", Err: err}
+	}
+
+	key = "h5p-libraries/extracted/" + resolved
+	data, err = s.fileProvider.Download(ctx, key)
 	if err != nil {
 		return nil, "", pkg.NotFoundError{Message: "Asset not found", Err: err}
 	}
 
-	contentType := detectContentType(assetPath)
+	contentType := detectContentType(resolved)
 	return data, contentType, nil
+}
+
+// BackfillLibraryMetadata reads library.json from R2 for each installed library
+// and updates the metadata_json column with the full contents.
+// This populates preloadedCss/preloadedJs for the native embed player.
+func (s *Service) BackfillLibraryMetadata(ctx context.Context) (int, error) {
+	libs, err := s.store.ListH5PLibraries(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("listing libraries: %w", err)
+	}
+
+	updated := 0
+	for _, lib := range libs {
+		// Build the R2 key for this library's library.json
+		key := LibraryStorageKey(
+			lib.MachineName,
+			int(lib.MajorVersion), int(lib.MinorVersion), int(lib.PatchVersion),
+			"library.json",
+		)
+
+		data, err := s.fileProvider.Download(ctx, key)
+		if err != nil {
+			slog.Warn("Backfill: could not download library.json",
+				"library", lib.MachineName,
+				"version", fmt.Sprintf("%d.%d.%d", lib.MajorVersion, lib.MinorVersion, lib.PatchVersion),
+				"error", err)
+			continue
+		}
+
+		// Validate it's valid JSON
+		var check json.RawMessage
+		if err := json.Unmarshal(data, &check); err != nil {
+			slog.Warn("Backfill: invalid JSON in library.json",
+				"library", lib.MachineName, "error", err)
+			continue
+		}
+
+		err = s.store.UpdateH5PLibraryMetadataJson(ctx, query.UpdateH5PLibraryMetadataJsonParams{
+			ID:           lib.ID,
+			MetadataJson: pqtype.NullRawMessage{RawMessage: data, Valid: true},
+		})
+		if err != nil {
+			slog.Warn("Backfill: failed to update metadata_json",
+				"library", lib.MachineName, "error", err)
+			continue
+		}
+
+		updated++
+		slog.Info("Backfill: updated metadata_json",
+			"library", lib.MachineName,
+			"version", fmt.Sprintf("%d.%d.%d", lib.MajorVersion, lib.MinorVersion, lib.PatchVersion))
+	}
+
+	return updated, nil
+}
+
+// resolveLibraryAssetPath converts an h5p-standalone-style path into the R2 storage path.
+// Input:  "H5P.Transition-1.0/library.json" or "H5P.MultiChoice/library.json"
+// Output: "H5P.Transition-1.0.0/library.json" or "H5P.MultiChoice-1.16.14/library.json"
+func (s *Service) resolveLibraryAssetPath(ctx context.Context, assetPath string) (string, error) {
+	// Split into folder and file parts: "H5P.Transition-1.0" + "library.json"
+	slashIdx := strings.Index(assetPath, "/")
+	if slashIdx < 0 {
+		return "", fmt.Errorf("invalid asset path: %s", assetPath)
+	}
+	folder := assetPath[:slashIdx]
+	filePath := assetPath[slashIdx+1:]
+
+	// Try to parse "machineName-major.minor" from folder
+	lastDash := strings.LastIndex(folder, "-")
+	if lastDash > 0 {
+		machineName := folder[:lastDash]
+		versionStr := folder[lastDash+1:]
+		var major, minor int32
+		if _, err := fmt.Sscanf(versionStr, "%d.%d", &major, &minor); err == nil {
+			lib, err := s.store.GetH5PLibraryByMachineNameMajorMinor(ctx, query.GetH5PLibraryByMachineNameMajorMinorParams{
+				MachineName:  machineName,
+				MajorVersion: major,
+				MinorVersion: minor,
+			})
+			if err == nil {
+				fullFolder := fmt.Sprintf("%s-%d.%d.%d", lib.MachineName, lib.MajorVersion, lib.MinorVersion, lib.PatchVersion)
+				return fullFolder + "/" + filePath, nil
+			}
+		}
+	}
+
+	// No version in folder — look up latest by machineName
+	lib, err := s.store.GetH5PLibraryByMachineName(ctx, folder)
+	if err != nil {
+		return "", fmt.Errorf("library not found: %s", folder)
+	}
+	fullFolder := fmt.Sprintf("%s-%d.%d.%d", lib.MachineName, lib.MajorVersion, lib.MinorVersion, lib.PatchVersion)
+	return fullFolder + "/" + filePath, nil
 }
 
 // InstallLibrary downloads and installs a library from the H5P Hub
@@ -381,6 +499,13 @@ func (s *Service) installSingleLibrary(ctx context.Context, extLib ExtractedLibr
 		Valid:  true,
 	}
 
+	// Serialize library.json as metadata (includes preloadedCss, preloadedJs)
+	metaJSON, metaErr := json.Marshal(lj)
+	metadataJson := pqtype.NullRawMessage{}
+	if metaErr == nil {
+		metadataJson = pqtype.NullRawMessage{RawMessage: metaJSON, Valid: true}
+	}
+
 	// Upsert library record
 	lib, err := s.store.UpsertH5PLibrary(ctx, query.UpsertH5PLibraryParams{
 		ID:            uuid.New(),
@@ -390,7 +515,7 @@ func (s *Service) installSingleLibrary(ctx context.Context, extLib ExtractedLibr
 		PatchVersion:  int32(patch),
 		Title:         lj.Title,
 		Origin:        "official",
-		MetadataJson:  pqtype.NullRawMessage{},
+		MetadataJson:  metadataJson,
 		Categories:    []string{},
 		Keywords:      []string{},
 		Screenshots:   []string{},

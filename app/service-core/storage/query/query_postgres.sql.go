@@ -462,6 +462,48 @@ func (q *Queries) GetH5PLibraryByMachineName(ctx context.Context, machineName st
 	return i, err
 }
 
+const getH5PLibraryByMachineNameMajorMinor = `-- name: GetH5PLibraryByMachineNameMajorMinor :one
+SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries
+WHERE machine_name = $1
+  AND major_version = $2
+  AND minor_version = $3
+ORDER BY patch_version DESC
+LIMIT 1
+`
+
+type GetH5PLibraryByMachineNameMajorMinorParams struct {
+	MachineName  string `json:"machine_name"`
+	MajorVersion int32  `json:"major_version"`
+	MinorVersion int32  `json:"minor_version"`
+}
+
+func (q *Queries) GetH5PLibraryByMachineNameMajorMinor(ctx context.Context, arg GetH5PLibraryByMachineNameMajorMinorParams) (H5pLibrary, error) {
+	row := q.db.QueryRowContext(ctx, getH5PLibraryByMachineNameMajorMinor, arg.MachineName, arg.MajorVersion, arg.MinorVersion)
+	var i H5pLibrary
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.MachineName,
+		&i.MajorVersion,
+		&i.MinorVersion,
+		&i.PatchVersion,
+		&i.Title,
+		&i.Origin,
+		&i.MetadataJson,
+		pq.Array(&i.Categories),
+		pq.Array(&i.Keywords),
+		pq.Array(&i.Screenshots),
+		&i.Description,
+		&i.IconPath,
+		&i.PackagePath,
+		&i.ExtractedPath,
+		&i.Runnable,
+		&i.Restricted,
+	)
+	return i, err
+}
+
 const getH5PLibraryByMachineNameVersion = `-- name: GetH5PLibraryByMachineNameVersion :one
 SELECT id, created_at, updated_at, machine_name, major_version, minor_version, patch_version, title, origin, metadata_json, categories, keywords, screenshots, description, icon_path, package_path, extracted_path, runnable, restricted FROM h5p_libraries
 WHERE machine_name = $1
@@ -562,15 +604,22 @@ func (q *Queries) GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.
 }
 
 const getH5PLibraryFullDependencyTree = `-- name: GetH5PLibraryFullDependencyTree :many
+-- Returns all transitive PRELOADED dependencies ordered deepest-first (topological).
+-- This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
+-- libraries that extend them (e.g. H5P.Question).
+-- Only follows 'preloaded' dependencies — editor and dynamic deps are excluded
+-- so that playback doesn't try to load editor-only libraries (H5PEditor.*).
 WITH RECURSIVE dep_tree AS (
-    SELECT d.depends_on_id AS library_id, d.dependency_type, 0 AS depth
+    SELECT d.depends_on_id AS library_id, 0 AS depth
     FROM h5p_library_dependencies d
     WHERE d.library_id = $1
+      AND d.dependency_type = 'preloaded'
     UNION
-    SELECT d.depends_on_id, d.dependency_type, dt.depth + 1
+    SELECT d.depends_on_id, dt.depth + 1
     FROM h5p_library_dependencies d
     JOIN dep_tree dt ON dt.library_id = d.library_id
     WHERE dt.depth < 20
+      AND d.dependency_type = 'preloaded'
 ),
 dep_max_depth AS (
     SELECT library_id, MAX(depth) AS max_depth
@@ -583,9 +632,11 @@ JOIN h5p_libraries l ON l.id = dmd.library_id
 ORDER BY dmd.max_depth DESC
 `
 
-// Returns all transitive dependencies ordered deepest-first (topological).
+// Returns all transitive PRELOADED dependencies ordered deepest-first (topological).
 // This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
 // libraries that extend them (e.g. H5P.Question).
+// Only follows 'preloaded' dependencies — editor and dynamic deps are excluded
+// so that playback doesn't try to load editor-only libraries (H5PEditor.*).
 func (q *Queries) GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error) {
 	rows, err := q.db.QueryContext(ctx, getH5PLibraryFullDependencyTree, libraryID)
 	if err != nil {
@@ -1669,6 +1720,20 @@ func (q *Queries) UpsertH5PHubCache(ctx context.Context, arg UpsertH5PHubCachePa
 		&i.ExpiresAt,
 	)
 	return i, err
+}
+
+const updateH5PLibraryMetadataJson = `-- name: UpdateH5PLibraryMetadataJson :exec
+UPDATE h5p_libraries SET metadata_json = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1
+`
+
+type UpdateH5PLibraryMetadataJsonParams struct {
+	ID           uuid.UUID             `json:"id"`
+	MetadataJson pqtype.NullRawMessage `json:"metadata_json"`
+}
+
+func (q *Queries) UpdateH5PLibraryMetadataJson(ctx context.Context, arg UpdateH5PLibraryMetadataJsonParams) error {
+	_, err := q.db.ExecContext(ctx, updateH5PLibraryMetadataJson, arg.ID, arg.MetadataJson)
+	return err
 }
 
 const upsertH5PLibrary = `-- name: UpsertH5PLibrary :one

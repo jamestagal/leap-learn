@@ -128,6 +128,14 @@ WHERE machine_name = $1
 ORDER BY major_version DESC, minor_version DESC, patch_version DESC
 LIMIT 1;
 
+-- name: GetH5PLibraryByMachineNameMajorMinor :one
+SELECT * FROM h5p_libraries
+WHERE machine_name = $1
+  AND major_version = $2
+  AND minor_version = $3
+ORDER BY patch_version DESC
+LIMIT 1;
+
 -- name: ListH5PLibraries :many
 SELECT * FROM h5p_libraries
 ORDER BY machine_name ASC, major_version DESC, minor_version DESC, patch_version DESC;
@@ -166,6 +174,9 @@ DO UPDATE SET
     updated_at = CURRENT_TIMESTAMP
 RETURNING *;
 
+-- name: UpdateH5PLibraryMetadataJson :exec
+UPDATE h5p_libraries SET metadata_json = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1;
+
 -- name: DeleteH5PLibrary :exec
 DELETE FROM h5p_libraries WHERE id = $1;
 
@@ -194,18 +205,22 @@ WHERE d.library_id = $1;
 DELETE FROM h5p_library_dependencies WHERE library_id = $1;
 
 -- name: GetH5PLibraryFullDependencyTree :many
--- Returns all transitive dependencies ordered deepest-first (topological).
+-- Returns all transitive PRELOADED dependencies ordered deepest-first (topological).
 -- This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
 -- libraries that extend them (e.g. H5P.Question).
+-- Only follows 'preloaded' dependencies — editor and dynamic deps are excluded
+-- so that playback doesn't try to load editor-only libraries (H5PEditor.*).
 WITH RECURSIVE dep_tree AS (
-    SELECT d.depends_on_id AS library_id, d.dependency_type, 0 AS depth
+    SELECT d.depends_on_id AS library_id, 0 AS depth
     FROM h5p_library_dependencies d
     WHERE d.library_id = $1
+      AND d.dependency_type = 'preloaded'
     UNION
-    SELECT d.depends_on_id, d.dependency_type, dt.depth + 1
+    SELECT d.depends_on_id, dt.depth + 1
     FROM h5p_library_dependencies d
     JOIN dep_tree dt ON dt.library_id = d.library_id
     WHERE dt.depth < 20
+      AND d.dependency_type = 'preloaded'
 ),
 dep_max_depth AS (
     SELECT library_id, MAX(depth) AS max_depth

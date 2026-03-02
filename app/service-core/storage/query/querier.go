@@ -43,6 +43,7 @@ type Querier interface {
 	// =============================================================================
 	GetH5PLibrary(ctx context.Context, id uuid.UUID) (H5pLibrary, error)
 	GetH5PLibraryByMachineName(ctx context.Context, machineName string) (H5pLibrary, error)
+	GetH5PLibraryByMachineNameMajorMinor(ctx context.Context, arg GetH5PLibraryByMachineNameMajorMinorParams) (H5pLibrary, error)
 	GetH5PLibraryByMachineNameVersion(ctx context.Context, arg GetH5PLibraryByMachineNameVersionParams) (H5pLibrary, error)
 	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]GetH5PLibraryDependenciesRow, error)
 	// Returns all transitive dependencies ordered deepest-first (topological).

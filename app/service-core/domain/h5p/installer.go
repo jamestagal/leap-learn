@@ -49,6 +49,11 @@ type H5PManifest struct {
 	EditorDependencies    []LibraryDep `json:"editorDependencies,omitempty"`
 }
 
+// AssetPath represents a CSS or JS file path in a library.json
+type AssetPath struct {
+	Path string `json:"path"`
+}
+
 // LibraryJSON represents a library.json file inside an .h5p package
 type LibraryJSON struct {
 	Title          string       `json:"title"`
@@ -58,6 +63,8 @@ type LibraryJSON struct {
 	PatchVersion   FlexInt      `json:"patchVersion"`
 	Runnable       FlexInt      `json:"runnable"`
 	Description    string       `json:"description,omitempty"`
+	PreloadedCss   []AssetPath  `json:"preloadedCss,omitempty"`
+	PreloadedJs    []AssetPath  `json:"preloadedJs,omitempty"`
 	PreloadedDependencies []LibraryDep `json:"preloadedDependencies,omitempty"`
 	DynamicDependencies   []LibraryDep `json:"dynamicDependencies,omitempty"`
 	EditorDependencies    []LibraryDep `json:"editorDependencies,omitempty"`

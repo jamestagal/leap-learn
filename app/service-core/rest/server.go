@@ -62,8 +62,14 @@ func Run(apiHandler *Handler) *http.Server {
 	mux.HandleFunc("/api/v1/h5p/content-files/", apiHandler.handleContentFile)
 	mux.HandleFunc("/api/v1/h5p/temp-files/", apiHandler.handleTempFile)
 
+	// H5P Play/Delivery (authenticated)
+	mux.HandleFunc("/api/v1/h5p/play/", apiHandler.handleH5PPlayRoute)
+
 	// H5P xAPI statement capture (authenticated)
 	mux.HandleFunc("/api/v1/h5p/xapi", apiHandler.handleXapiStatement)
+
+	// H5P Maintenance (admin)
+	mux.HandleFunc("/api/v1/h5p/backfill-metadata", apiHandler.handleH5PBackfillMetadata)
 
 	// Cron jobs
 	mux.HandleFunc("/tasks/delete-tokens", apiHandler.handleTasksDeleteTokens)
