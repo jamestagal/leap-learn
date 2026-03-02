@@ -8,6 +8,9 @@
 		CheckCircle,
 		Circle,
 		List,
+		FileText,
+		Puzzle,
+		Video,
 	} from "lucide-svelte";
 	import H5PPlayer from "$lib/components/h5p/H5PPlayer.svelte";
 
@@ -186,6 +189,13 @@
 							{:else}
 								<Circle class="h-4 w-4 text-base-content/20 shrink-0" />
 							{/if}
+							{#if item.itemType === "h5p"}
+								<Puzzle class="h-3.5 w-3.5 text-primary/60 shrink-0" />
+							{:else if item.itemType === "video"}
+								<Video class="h-3.5 w-3.5 text-primary/60 shrink-0" />
+							{:else}
+								<FileText class="h-3.5 w-3.5 text-base-content/30 shrink-0" />
+							{/if}
 							<span class="truncate {item.completed && !isCurrent ? 'text-base-content/60' : ''}">
 								{item.title}
 							</span>
@@ -219,6 +229,13 @@
 							<CheckCircle class="h-4 w-4 text-success shrink-0" />
 						{:else}
 							<Circle class="h-4 w-4 text-base-content/20 shrink-0" />
+						{/if}
+						{#if item.itemType === "h5p"}
+							<Puzzle class="h-3.5 w-3.5 text-primary/60 shrink-0" />
+						{:else if item.itemType === "video"}
+							<Video class="h-3.5 w-3.5 text-primary/60 shrink-0" />
+						{:else}
+							<FileText class="h-3.5 w-3.5 text-base-content/30 shrink-0" />
 						{/if}
 						<span class="truncate">{item.title}</span>
 					</a>
