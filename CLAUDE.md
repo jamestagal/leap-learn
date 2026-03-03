@@ -31,9 +31,48 @@ Services communicate via gRPC (internal) and REST APIs (external), with protobuf
 
 1. H5P `content.json` stored as jsonb — never query into it, retrieve by ID
 2. Library dependency resolution uses recursive CTEs, not application-level recursion
-3. R2 paths follow: `h5p-libraries/{origin}/{packages|extracted}/` and `h5p-content/{org_id}/{content_id}/`
+3. R2 paths follow: `h5p-libraries/{packages|extracted}/{machineName}-{version}/` and `h5p-content/{org_id}/{content_id}/` and `h5p-temp/{user_id}/{temp_uuid}/`
 4. Hub API endpoints are REST (not ConnectRPC) for H5P client compatibility
 5. Check existing components in `service-client/src/lib/components/` before creating new ones
+
+## H5P File Storage Architecture
+
+All H5P files are stored in R2 (Cloudflare) via the Go `file.Provider` interface. No filesystem storage.
+
+### Storage Provider
+- **Interface**: `app/service-core/domain/file/provider.go` — `Upload`, `Download`, `Remove`, `ListByPrefix`
+- **R2 impl**: `app/service-core/domain/file/provider_r2.go` — AWS SDK v2 S3-compatible client
+- **Backend selection**: `FILE_PROVIDER` env var (`r2`, `s3`, `gcs`, `azblob`, `local`)
+
+### R2 Path Conventions
+
+| Prefix | Path Pattern | Example |
+|--------|-------------|---------|
+| Libraries (extracted) | `h5p-libraries/extracted/{name}-{major}.{minor}.{patch}/{filepath}` | `h5p-libraries/extracted/H5P.MultiChoice-1.16.27/css/multichoice.css` |
+| Libraries (packages) | `h5p-libraries/packages/{name}-{major}.{minor}.{patch}.h5p` | `h5p-libraries/packages/H5P.MultiChoice-1.16.27.h5p` |
+| Content files | `h5p-content/{org_id}/{content_id}/{filename}` | `h5p-content/abc123/def456/tempId_image.jpg` |
+| Temp files (editor) | `h5p-temp/{user_id}/{temp_uuid}/{filename}` | `h5p-temp/user123/tmp456/image.jpg` |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `app/service-core/domain/file/provider.go` | Storage provider interface + factory |
+| `app/service-core/domain/file/provider_r2.go` | R2 implementation |
+| `app/service-core/domain/file/provider_s3client.go` | Shared S3 helpers (PutObject/GetObject/DeleteObject/ListObjectsV2) |
+| `app/service-core/domain/h5p/installer.go` | Library extraction, `LibraryStorageKey()`, `PackageStorageKey()` |
+| `app/service-core/domain/h5p/service.go` | Library install flow, asset serving, hub client |
+| `app/service-core/domain/h5p/content.go` | Content CRUD, temp file migration (`migrateTempFiles()`) |
+| `app/service-core/domain/h5p/temp.go` | Temp file upload/download during editing |
+
+### Content Save Flow
+
+1. **Author uploads media** → stored at `h5p-temp/{userId}/{tempId}/{filename}`, returned with `#tmp` suffix
+2. **Author clicks Save** → `SaveContentFromEditor()` scans params for `#tmp` references
+3. **Migrate temp files** → downloads from `h5p-temp/...`, uploads to `h5p-content/{orgId}/{contentId}/{tempId}_{filename}`
+4. **Rewrite params** → replaces `"userId/tempId/filename#tmp"` with `"tempId_filename"` (filename only)
+5. **Update DB** → `content_json` stored as JSONB with permanent file references
+6. **Cleanup** → async delete of temp files (best-effort)
 
 ## Multi-Tenancy Architecture
 
@@ -696,12 +735,12 @@ This builds institutional knowledge over time and reduces repeated errors.
 | Subscription tiers | Copied directly | Webkit |
 | Org settings / config options | Adapted from agency_form_options | Webkit |
 | Svelte 5 shared components | Copied directly | Webkit |
-| R2 file storage client | **Build new** | — |
-| H5P Hub API | **Build new** | Catharsis spec |
-| H5P Library management | **Build new** | — |
-| H5P Content management | **Build new** | — |
-| H5P Editor integration | **Build new** | Existing SvelteKit code |
-| H5P Player (h5p-standalone) | **Build new** | — |
-| Course management | **Build new** | — |
-| Enrollment + progress tracking | **Build new** | — |
-| xAPI statement recording | **Build new** | — |
+| R2 file storage client | **Done** | Go `file.Provider` interface |
+| H5P Hub API | **Done** | Go `hub_client.go` |
+| H5P Library management | **Done** | Go installer + DB |
+| H5P Content management | **Done** | Go content CRUD + R2 |
+| H5P Editor integration | **Done** | Go editor routes + SvelteKit |
+| H5P Player (embed) | **Done** | Go embed handler |
+| Course management | **Done** | SvelteKit + Drizzle |
+| Enrollment + progress tracking | **In progress** | Phase 4 |
+| xAPI statement recording | **Done** | Go xAPI route |
