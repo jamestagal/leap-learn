@@ -281,3 +281,19 @@ create table if not exists xapi_statements (
     verb varchar(255) not null,
     statement jsonb not null
 );
+
+-- =============================================================================
+-- H5P CONTENT USER STATE (Save/Resume Progress)
+-- =============================================================================
+
+create table if not exists h5p_content_user_state (
+    id uuid primary key not null default gen_random_uuid(),
+    user_id uuid not null references users(id) on delete cascade,
+    content_id uuid not null references h5p_content(id) on delete cascade,
+    sub_content_id text not null default '0',
+    data_type text not null default 'state',
+    data jsonb not null,
+    preload boolean not null default true,
+    updated_at timestamptz not null default now(),
+    unique(user_id, content_id, sub_content_id, data_type)
+);

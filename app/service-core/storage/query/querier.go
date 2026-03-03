@@ -22,6 +22,7 @@ type Querier interface {
 	// H5P Content (Organisation-scoped)
 	// =============================================================================
 	CreateH5PContent(ctx context.Context, arg CreateH5PContentParams) (H5pContent, error)
+	DeleteContentUserState(ctx context.Context, arg DeleteContentUserStateParams) error
 	DeleteExpiredH5PHubCache(ctx context.Context) error
 	DeleteH5PLibrary(ctx context.Context, id uuid.UUID) error
 	DeleteH5PLibraryByMachineName(ctx context.Context, machineName string) error
@@ -31,6 +32,11 @@ type Querier interface {
 	DisableH5POrgLibrary(ctx context.Context, arg DisableH5POrgLibraryParams) error
 	DowngradeOrganisationToFree(ctx context.Context, id uuid.UUID) error
 	EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error
+	// =============================================================================
+	// H5P Content User State (Save/Resume)
+	// =============================================================================
+	GetContentUserState(ctx context.Context, arg GetContentUserStateParams) (H5pContentUserState, error)
+	GetContentUserStatesForContent(ctx context.Context, arg GetContentUserStatesForContentParams) ([]H5pContentUserState, error)
 	GetEnrolmentsByUserAndContentId(ctx context.Context, arg GetEnrolmentsByUserAndContentIdParams) ([]GetEnrolmentsByUserAndContentIdRow, error)
 	GetH5PContent(ctx context.Context, arg GetH5PContentParams) (H5pContent, error)
 	GetH5PContentOrgId(ctx context.Context, id uuid.UUID) (GetH5PContentOrgIdRow, error)
@@ -46,9 +52,11 @@ type Querier interface {
 	GetH5PLibraryByMachineNameMajorMinor(ctx context.Context, arg GetH5PLibraryByMachineNameMajorMinorParams) (H5pLibrary, error)
 	GetH5PLibraryByMachineNameVersion(ctx context.Context, arg GetH5PLibraryByMachineNameVersionParams) (H5pLibrary, error)
 	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]GetH5PLibraryDependenciesRow, error)
-	// Returns all transitive dependencies ordered deepest-first (topological).
+	// Returns all transitive PRELOADED dependencies ordered deepest-first (topological).
 	// This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
 	// libraries that extend them (e.g. H5P.Question).
+	// Only follows 'preloaded' dependencies — editor and dynamic deps are excluded
+	// so that playback doesn't try to load editor-only libraries (H5PEditor.*).
 	GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error)
 	// =============================================================================
 	// Organisation Billing Queries (Platform Subscriptions)
@@ -81,6 +89,7 @@ type Querier interface {
 	SelectUsers(ctx context.Context) ([]User, error)
 	SoftDeleteH5PContent(ctx context.Context, arg SoftDeleteH5PContentParams) error
 	UpdateH5PContent(ctx context.Context, arg UpdateH5PContentParams) (H5pContent, error)
+	UpdateH5PLibraryMetadataJson(ctx context.Context, arg UpdateH5PLibraryMetadataJsonParams) error
 	UpdateOrganisationStripeCustomer(ctx context.Context, arg UpdateOrganisationStripeCustomerParams) error
 	UpdateOrganisationSubscription(ctx context.Context, arg UpdateOrganisationSubscriptionParams) error
 	UpdateToken(ctx context.Context, arg UpdateTokenParams) error
@@ -91,6 +100,7 @@ type Querier interface {
 	UpdateUserPhone(ctx context.Context, arg UpdateUserPhoneParams) error
 	UpdateUserSub(ctx context.Context, arg UpdateUserSubParams) error
 	UpdateUserSubscription(ctx context.Context, arg UpdateUserSubscriptionParams) error
+	UpsertContentUserState(ctx context.Context, arg UpsertContentUserStateParams) (H5pContentUserState, error)
 	UpsertH5PHubCache(ctx context.Context, arg UpsertH5PHubCacheParams) (H5pHubCache, error)
 	UpsertH5PLibrary(ctx context.Context, arg UpsertH5PLibraryParams) (H5pLibrary, error)
 	UpsertProgressRecord(ctx context.Context, arg UpsertProgressRecordParams) error

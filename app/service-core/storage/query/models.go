@@ -81,6 +81,17 @@ type H5pContentFolder struct {
 	Name      string        `json:"name"`
 }
 
+type H5pContentUserState struct {
+	ID           uuid.UUID       `json:"id"`
+	UserID       uuid.UUID       `json:"user_id"`
+	ContentID    uuid.UUID       `json:"content_id"`
+	SubContentID string          `json:"sub_content_id"`
+	DataType     string          `json:"data_type"`
+	Data         json.RawMessage `json:"data"`
+	Preload      bool            `json:"preload"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
 type H5pHubCache struct {
 	ID        uuid.UUID       `json:"id"`
 	CreatedAt time.Time       `json:"created_at"`

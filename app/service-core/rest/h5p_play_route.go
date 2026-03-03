@@ -520,28 +520,63 @@ func (h *Handler) handleH5PPlayEmbed(w http.ResponseWriter, r *http.Request, con
 
 	libString := fmt.Sprintf("%s %d.%d", pc.mainLib.MachineName, pc.mainLib.MajorVersion, pc.mainLib.MinorVersion)
 
+	// Preload saved user state (for resume functionality)
+	store := query.New(h.storage.Conn)
+	savedStates, _ := store.GetContentUserStatesForContent(r.Context(), query.GetContentUserStatesForContentParams{
+		UserID:    pc.userID,
+		ContentID: pc.content.ID,
+	})
+
+	// Build contentUserData as nested object: {subContentId: {dataType: "json string"}}
+	// H5P core expects this exact structure (h5p.js getUserData line 2438-2439)
+	contentUserData := make(map[string]map[string]string)
+	for _, s := range savedStates {
+		if contentUserData[s.SubContentID] == nil {
+			contentUserData[s.SubContentID] = make(map[string]string)
+		}
+		contentUserData[s.SubContentID][s.DataType] = string(s.Data)
+	}
+
+	// Build cid-1 content object
+	cidContent := map[string]interface{}{
+		"library":     libString,
+		"jsonContent": string(contentData),
+		"fullScreen":  false,
+		"styles":      libCss,
+		"scripts":     libJs,
+		"displayOptions": map[string]interface{}{
+			"frame":     true,
+			"copyright": true,
+			"export":    false,
+			"embed":     false,
+			"icon":      false,
+		},
+		"contentUrl": fmt.Sprintf("/api/h5p/play/%s/content", pc.content.ID.String()),
+		"metadata":   map[string]interface{}{"title": pc.content.Title},
+	}
+
+	// Attach preloaded state if any exists
+	if len(contentUserData) > 0 {
+		cidContent["contentUserData"] = contentUserData
+	}
+
 	// Build H5PIntegration object (matching Moodle's structure)
 	integration := map[string]interface{}{
 		"baseUrl":      "",
 		"url":          "/api/h5p",
 		"urlLibraries": "/api/h5p/libraries",
+		"saveFreq":     10,
+		"ajax": map[string]interface{}{
+			// H5P core replaces :contentId with the data-content-id attribute (hardcoded "1"),
+			// not the actual UUID. Pre-bake the real UUID so the URL resolves correctly.
+			"contentUserData": fmt.Sprintf("/api/h5p/content-user-data/%s/:dataType/:subContentId", pc.content.ID.String()),
+		},
+		"user": map[string]interface{}{
+			"name": "Learner",
+			"mail": "",
+		},
 		"contents": map[string]interface{}{
-			"cid-1": map[string]interface{}{
-				"library":     libString,
-				"jsonContent": string(contentData),
-				"fullScreen":  false,
-				"styles":      libCss,
-				"scripts":     libJs,
-				"displayOptions": map[string]interface{}{
-					"frame":     true,
-					"copyright": true,
-					"export":    false,
-					"embed":     false,
-					"icon":      false,
-				},
-				"contentUrl": fmt.Sprintf("/api/h5p/play/%s/content", pc.content.ID.String()),
-				"metadata":   map[string]interface{}{"title": pc.content.Title},
-			},
+			"cid-1": cidContent,
 		},
 		"core": map[string]interface{}{
 			"styles":  h5pCoreCss,

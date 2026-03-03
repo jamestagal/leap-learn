@@ -66,11 +66,13 @@ const authHandle: Handle = async ({ event, resolve }) => {
 		return await resolve(event);
 	}
 
-	// Skip auth for internal dev/framework paths
+	// Skip auth for internal dev/framework paths and API proxy routes
+	// (API routes handle their own auth via Bearer token on the Go backend)
 	if (
 		event.url.pathname.startsWith("/__") ||
 		event.url.pathname.startsWith("/@") ||
-		event.url.pathname.startsWith("/node_modules")
+		event.url.pathname.startsWith("/node_modules") ||
+		event.url.pathname.startsWith("/api/")
 	) {
 		return await resolve(event);
 	}

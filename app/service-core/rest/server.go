@@ -68,6 +68,9 @@ func Run(apiHandler *Handler) *http.Server {
 	// H5P xAPI statement capture (authenticated)
 	mux.HandleFunc("/api/v1/h5p/xapi", apiHandler.handleXapiStatement)
 
+	// H5P Content User State (save/resume progress)
+	mux.HandleFunc("/api/v1/h5p/content-user-data/", apiHandler.handleContentUserData)
+
 	// H5P Maintenance (admin)
 	mux.HandleFunc("/api/v1/h5p/backfill-metadata", apiHandler.handleH5PBackfillMetadata)
 

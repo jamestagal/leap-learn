@@ -164,6 +164,28 @@ func (q *Queries) CreateH5PContent(ctx context.Context, arg CreateH5PContentPara
 	return i, err
 }
 
+const deleteContentUserState = `-- name: DeleteContentUserState :exec
+DELETE FROM h5p_content_user_state
+WHERE user_id = $1 AND content_id = $2 AND sub_content_id = $3 AND data_type = $4
+`
+
+type DeleteContentUserStateParams struct {
+	UserID       uuid.UUID `json:"user_id"`
+	ContentID    uuid.UUID `json:"content_id"`
+	SubContentID string    `json:"sub_content_id"`
+	DataType     string    `json:"data_type"`
+}
+
+func (q *Queries) DeleteContentUserState(ctx context.Context, arg DeleteContentUserStateParams) error {
+	_, err := q.db.ExecContext(ctx, deleteContentUserState,
+		arg.UserID,
+		arg.ContentID,
+		arg.SubContentID,
+		arg.DataType,
+	)
+	return err
+}
+
 const deleteExpiredH5PHubCache = `-- name: DeleteExpiredH5PHubCache :exec
 DELETE FROM h5p_hub_cache WHERE expires_at < CURRENT_TIMESTAMP
 `
@@ -269,6 +291,85 @@ type EnableH5POrgLibraryParams struct {
 func (q *Queries) EnableH5POrgLibrary(ctx context.Context, arg EnableH5POrgLibraryParams) error {
 	_, err := q.db.ExecContext(ctx, enableH5POrgLibrary, arg.ID, arg.OrgID, arg.LibraryID)
 	return err
+}
+
+const getContentUserState = `-- name: GetContentUserState :one
+
+SELECT id, user_id, content_id, sub_content_id, data_type, data, preload, updated_at FROM h5p_content_user_state
+WHERE user_id = $1 AND content_id = $2 AND sub_content_id = $3 AND data_type = $4
+`
+
+type GetContentUserStateParams struct {
+	UserID       uuid.UUID `json:"user_id"`
+	ContentID    uuid.UUID `json:"content_id"`
+	SubContentID string    `json:"sub_content_id"`
+	DataType     string    `json:"data_type"`
+}
+
+// =============================================================================
+// H5P Content User State (Save/Resume)
+// =============================================================================
+func (q *Queries) GetContentUserState(ctx context.Context, arg GetContentUserStateParams) (H5pContentUserState, error) {
+	row := q.db.QueryRowContext(ctx, getContentUserState,
+		arg.UserID,
+		arg.ContentID,
+		arg.SubContentID,
+		arg.DataType,
+	)
+	var i H5pContentUserState
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ContentID,
+		&i.SubContentID,
+		&i.DataType,
+		&i.Data,
+		&i.Preload,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getContentUserStatesForContent = `-- name: GetContentUserStatesForContent :many
+SELECT id, user_id, content_id, sub_content_id, data_type, data, preload, updated_at FROM h5p_content_user_state
+WHERE user_id = $1 AND content_id = $2 AND preload = true
+`
+
+type GetContentUserStatesForContentParams struct {
+	UserID    uuid.UUID `json:"user_id"`
+	ContentID uuid.UUID `json:"content_id"`
+}
+
+func (q *Queries) GetContentUserStatesForContent(ctx context.Context, arg GetContentUserStatesForContentParams) ([]H5pContentUserState, error) {
+	rows, err := q.db.QueryContext(ctx, getContentUserStatesForContent, arg.UserID, arg.ContentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []H5pContentUserState
+	for rows.Next() {
+		var i H5pContentUserState
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ContentID,
+			&i.SubContentID,
+			&i.DataType,
+			&i.Data,
+			&i.Preload,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getEnrolmentsByUserAndContentId = `-- name: GetEnrolmentsByUserAndContentId :many
@@ -604,11 +705,6 @@ func (q *Queries) GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.
 }
 
 const getH5PLibraryFullDependencyTree = `-- name: GetH5PLibraryFullDependencyTree :many
--- Returns all transitive PRELOADED dependencies ordered deepest-first (topological).
--- This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
--- libraries that extend them (e.g. H5P.Question).
--- Only follows 'preloaded' dependencies — editor and dynamic deps are excluded
--- so that playback doesn't try to load editor-only libraries (H5PEditor.*).
 WITH RECURSIVE dep_tree AS (
     SELECT d.depends_on_id AS library_id, 0 AS depth
     FROM h5p_library_dependencies d
@@ -1467,6 +1563,20 @@ func (q *Queries) UpdateH5PContent(ctx context.Context, arg UpdateH5PContentPara
 	return i, err
 }
 
+const updateH5PLibraryMetadataJson = `-- name: UpdateH5PLibraryMetadataJson :exec
+UPDATE h5p_libraries SET metadata_json = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1
+`
+
+type UpdateH5PLibraryMetadataJsonParams struct {
+	ID           uuid.UUID             `json:"id"`
+	MetadataJson pqtype.NullRawMessage `json:"metadata_json"`
+}
+
+func (q *Queries) UpdateH5PLibraryMetadataJson(ctx context.Context, arg UpdateH5PLibraryMetadataJsonParams) error {
+	_, err := q.db.ExecContext(ctx, updateH5PLibraryMetadataJson, arg.ID, arg.MetadataJson)
+	return err
+}
+
 const updateOrganisationStripeCustomer = `-- name: UpdateOrganisationStripeCustomer :exec
 UPDATE organisations
 SET stripe_customer_id = $2, updated_at = CURRENT_TIMESTAMP
@@ -1686,6 +1796,46 @@ func (q *Queries) UpdateUserSubscription(ctx context.Context, arg UpdateUserSubs
 	return err
 }
 
+const upsertContentUserState = `-- name: UpsertContentUserState :one
+INSERT INTO h5p_content_user_state (user_id, content_id, sub_content_id, data_type, data, preload, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now())
+ON CONFLICT (user_id, content_id, sub_content_id, data_type)
+DO UPDATE SET data = EXCLUDED.data, preload = EXCLUDED.preload, updated_at = now()
+RETURNING id, user_id, content_id, sub_content_id, data_type, data, preload, updated_at
+`
+
+type UpsertContentUserStateParams struct {
+	UserID       uuid.UUID       `json:"user_id"`
+	ContentID    uuid.UUID       `json:"content_id"`
+	SubContentID string          `json:"sub_content_id"`
+	DataType     string          `json:"data_type"`
+	Data         json.RawMessage `json:"data"`
+	Preload      bool            `json:"preload"`
+}
+
+func (q *Queries) UpsertContentUserState(ctx context.Context, arg UpsertContentUserStateParams) (H5pContentUserState, error) {
+	row := q.db.QueryRowContext(ctx, upsertContentUserState,
+		arg.UserID,
+		arg.ContentID,
+		arg.SubContentID,
+		arg.DataType,
+		arg.Data,
+		arg.Preload,
+	)
+	var i H5pContentUserState
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ContentID,
+		&i.SubContentID,
+		&i.DataType,
+		&i.Data,
+		&i.Preload,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const upsertH5PHubCache = `-- name: UpsertH5PHubCache :one
 INSERT INTO h5p_hub_cache (id, cache_key, data, expires_at)
 VALUES ($1, $2, $3, $4)
@@ -1720,20 +1870,6 @@ func (q *Queries) UpsertH5PHubCache(ctx context.Context, arg UpsertH5PHubCachePa
 		&i.ExpiresAt,
 	)
 	return i, err
-}
-
-const updateH5PLibraryMetadataJson = `-- name: UpdateH5PLibraryMetadataJson :exec
-UPDATE h5p_libraries SET metadata_json = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1
-`
-
-type UpdateH5PLibraryMetadataJsonParams struct {
-	ID           uuid.UUID             `json:"id"`
-	MetadataJson pqtype.NullRawMessage `json:"metadata_json"`
-}
-
-func (q *Queries) UpdateH5PLibraryMetadataJson(ctx context.Context, arg UpdateH5PLibraryMetadataJsonParams) error {
-	_, err := q.db.ExecContext(ctx, updateH5PLibraryMetadataJson, arg.ID, arg.MetadataJson)
-	return err
 }
 
 const upsertH5PLibrary = `-- name: UpsertH5PLibrary :one

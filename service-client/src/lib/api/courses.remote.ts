@@ -19,7 +19,7 @@ import {
 	generateSlug,
 } from "$lib/server/organisation";
 import { getUserId } from "$lib/server/auth";
-import { eq, and, count, sql, asc, desc, isNull, ilike } from "drizzle-orm";
+import { eq, and, count, sql, asc, desc, isNull, ilike, inArray } from "drizzle-orm";
 import { enforceCourseLimit } from "$lib/server/subscription";
 import { logActivity } from "$lib/server/db-helpers";
 import type { CourseListItem, CourseWithItems, CourseItemWithContent, CourseSection } from "./courses.types";
@@ -268,6 +268,34 @@ export const getCourse = query(v.pipe(v.string(), v.uuid()), async (courseId) =>
 
 	return result;
 });
+
+/**
+ * Get usage counts for H5P content across courses.
+ * Returns a map of contentId → number of distinct courses using that content.
+ */
+export const getContentUsageCounts = query(
+	v.array(v.pipe(v.string(), v.uuid())),
+	async (contentIds) => {
+		if (contentIds.length === 0) return {} as Record<string, number>;
+
+		const rows = await db
+			.select({
+				contentId: courseItems.contentId,
+				courseCount: sql<number>`COUNT(DISTINCT ${courseItems.courseId})`.mapWith(Number),
+			})
+			.from(courseItems)
+			.where(and(inArray(courseItems.contentId, contentIds), isNull(courseItems.removedAt)))
+			.groupBy(courseItems.contentId);
+
+		const result: Record<string, number> = {};
+		for (const row of rows) {
+			if (row.contentId) {
+				result[row.contentId] = row.courseCount;
+			}
+		}
+		return result;
+	},
+);
 
 // =============================================================================
 // Command Functions (Mutations)

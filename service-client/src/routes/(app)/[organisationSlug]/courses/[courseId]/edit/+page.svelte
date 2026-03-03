@@ -34,6 +34,7 @@
 	let organisationSlug = $derived(data.organisation.slug);
 	let course = $derived(data.course);
 	let availableContent = $derived(data.availableContent);
+	let contentUsageCounts = $derived(data.contentUsageCounts);
 
 	// Editable course fields
 	let editTitle = $state("");
@@ -828,6 +829,7 @@
 					{:else}
 						{#each filteredContent() as content (content.id)}
 							{@const alreadyAdded = items.some((item) => item.contentId === content.id)}
+							{@const usageCount = contentUsageCounts[content.id] || 0}
 							<button
 								class="flex items-center gap-3 w-full p-3 rounded-lg border border-base-300 text-left
 									{alreadyAdded ? 'opacity-50 cursor-not-allowed' : 'hover:border-primary hover:bg-primary/5 cursor-pointer'}"
@@ -841,6 +843,9 @@
 										{content.libraryTitle || content.libraryName}
 										{#if content.libraryVersion}
 											<span class="ml-1">v{content.libraryVersion}</span>
+										{/if}
+										{#if usageCount > 0}
+											<span class="badge badge-outline badge-xs ml-1">Used in {usageCount} {usageCount === 1 ? 'course' : 'courses'}</span>
 										{/if}
 									</div>
 								</div>

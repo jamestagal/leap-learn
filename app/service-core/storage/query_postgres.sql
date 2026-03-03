@@ -372,3 +372,26 @@ SELECT id, org_id FROM h5p_content WHERE id = $1 AND deleted_at IS NULL;
 SELECT id FROM organisation_memberships
 WHERE user_id = $1 AND organisation_id = $2 AND status = 'active'
 LIMIT 1;
+
+-- =============================================================================
+-- H5P Content User State (Save/Resume)
+-- =============================================================================
+
+-- name: GetContentUserState :one
+SELECT * FROM h5p_content_user_state
+WHERE user_id = $1 AND content_id = $2 AND sub_content_id = $3 AND data_type = $4;
+
+-- name: GetContentUserStatesForContent :many
+SELECT * FROM h5p_content_user_state
+WHERE user_id = $1 AND content_id = $2 AND preload = true;
+
+-- name: UpsertContentUserState :one
+INSERT INTO h5p_content_user_state (user_id, content_id, sub_content_id, data_type, data, preload, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now())
+ON CONFLICT (user_id, content_id, sub_content_id, data_type)
+DO UPDATE SET data = EXCLUDED.data, preload = EXCLUDED.preload, updated_at = now()
+RETURNING *;
+
+-- name: DeleteContentUserState :exec
+DELETE FROM h5p_content_user_state
+WHERE user_id = $1 AND content_id = $2 AND sub_content_id = $3 AND data_type = $4;
