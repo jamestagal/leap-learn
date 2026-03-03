@@ -18,23 +18,40 @@ export interface CourseListItem {
 	updatedAt: Date;
 	itemCount: number;
 	enrolmentCount: number;
+	totalDurationMinutes: number;
 }
 
 export interface CourseItemWithContent {
 	id: string;
 	courseId: string;
 	contentId: string | null;
+	sectionId: string | null;
 	sortOrder: number;
 	title: string;
 	itemType: string;
 	bodyMarkdown: string | null;
 	removedAt: Date | null;
 	createdAt: Date;
+	estimatedDurationMinutes: number | null;
 	// H5P content info (joined)
 	contentTitle?: string;
 	contentStatus?: string;
 	libraryTitle?: string;
 	libraryMachineName?: string;
+}
+
+export interface CourseSection {
+	id: string;
+	courseId: string;
+	title: string;
+	description: string;
+	sortOrder: number;
+	createdAt: Date;
+	updatedAt: Date;
+}
+
+export interface CourseSectionWithItems extends CourseSection {
+	items: CourseItemWithContent[];
 }
 
 export interface CourseWithItems {
@@ -52,4 +69,5 @@ export interface CourseWithItems {
 	updatedAt: Date;
 	createdBy: string | null;
 	items: CourseItemWithContent[];
+	sections: CourseSection[];
 }

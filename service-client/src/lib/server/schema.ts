@@ -704,6 +704,27 @@ export const courses = pgTable(
 	}),
 );
 
+// Course Sections — optional grouping within a course
+export const courseSections = pgTable(
+	"course_sections",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+
+		courseId: uuid("course_id")
+			.notNull()
+			.references(() => courses.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		description: text("description").notNull().default(""),
+		sortOrder: integer("sort_order").notNull().default(0),
+	},
+	(table) => ({
+		courseIdx: index("course_sections_course_idx").on(table.courseId),
+		sortIdx: index("course_sections_sort_idx").on(table.courseId, table.sortOrder),
+	}),
+);
+
 // Course Items — ordered items within a course
 export const courseItems = pgTable(
 	"course_items",
@@ -716,16 +737,19 @@ export const courseItems = pgTable(
 			.notNull()
 			.references(() => courses.id, { onDelete: "cascade" }),
 		contentId: uuid("content_id").references(() => h5pContent.id, { onDelete: "set null" }),
+		sectionId: uuid("section_id").references(() => courseSections.id, { onDelete: "set null" }),
 
 		sortOrder: integer("sort_order").notNull().default(0),
 		title: text("title").notNull().default(""),
 		itemType: varchar("item_type", { length: 20 }).notNull().default("h5p"),
 		removedAt: timestamp("removed_at", { withTimezone: true }),
 		bodyMarkdown: text("body_markdown"),
+		estimatedDurationMinutes: integer("estimated_duration_minutes"),
 	},
 	(table) => ({
 		courseIdx: index("course_items_course_idx").on(table.courseId),
 		contentIdx: index("course_items_content_idx").on(table.contentId),
+		sectionIdx: index("course_items_section_idx").on(table.sectionId),
 		sortIdx: index("course_items_sort_idx").on(table.courseId, table.sortOrder),
 	}),
 );
@@ -929,6 +953,8 @@ export type H5pHubCacheEntryInsert = typeof h5pHubCache.$inferInsert;
 // Course types
 export type Course = typeof courses.$inferSelect;
 export type CourseInsert = typeof courses.$inferInsert;
+export type CourseSection = typeof courseSections.$inferSelect;
+export type CourseSectionInsert = typeof courseSections.$inferInsert;
 export type CourseItem = typeof courseItems.$inferSelect;
 export type CourseItemInsert = typeof courseItems.$inferInsert;
 export type CourseStatus = "draft" | "published" | "archived";

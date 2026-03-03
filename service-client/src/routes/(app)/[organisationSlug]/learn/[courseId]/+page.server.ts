@@ -14,6 +14,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		return {
 			course,
+			sections: course.sections,
 			progress,
 		};
 	} catch (err) {

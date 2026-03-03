@@ -1,9 +1,10 @@
 <script lang="ts">
 	import type { PageProps } from "./$types";
 	import { invalidateAll } from "$app/navigation";
-	import { Plus, Search, Trash2, Pencil, Eye, Archive, RotateCcw } from "lucide-svelte";
+	import { Plus, Search, Trash2, Archive, RotateCcw, LayoutGrid, List } from "lucide-svelte";
 	import { FEATURES } from "$lib/config/features";
 	import { deleteCourse, updateCourse } from "$lib/api/courses.remote";
+	import CourseCard from "$lib/components/courses/CourseCard.svelte";
 
 	let { data }: PageProps = $props();
 	let organisationSlug = $derived(data.organisation.slug);
@@ -12,6 +13,7 @@
 	// Filters
 	let statusFilter = $state("all");
 	let searchQuery = $state("");
+	let viewMode = $state<"card" | "list">("card");
 
 	let filteredCourses = $derived(() => {
 		let result = allCourses;
@@ -68,32 +70,6 @@
 		await updateCourse({ courseId, status: "draft" });
 		await invalidateAll();
 	}
-
-	function statusBadgeClass(status: string): string {
-		switch (status) {
-			case "published":
-				return "badge-success";
-			case "draft":
-				return "badge-warning";
-			case "archived":
-				return "badge-ghost";
-			default:
-				return "badge-ghost";
-		}
-	}
-
-	function formatDate(date: Date | string | null): string {
-		if (!date) return "—";
-		try {
-			return new Date(date).toLocaleDateString(undefined, {
-				year: "numeric",
-				month: "short",
-				day: "numeric",
-			});
-		} catch {
-			return "—";
-		}
-	}
 </script>
 
 <!-- Page Header -->
@@ -132,6 +108,22 @@
 			bind:value={searchQuery}
 		/>
 	</div>
+	<div class="ml-auto join">
+		<button
+			class="btn btn-sm join-item {viewMode === 'card' ? 'btn-active' : ''}"
+			onclick={() => (viewMode = "card")}
+			title="Card view"
+		>
+			<LayoutGrid class="h-4 w-4" />
+		</button>
+		<button
+			class="btn btn-sm join-item {viewMode === 'list' ? 'btn-active' : ''}"
+			onclick={() => (viewMode = "list")}
+			title="List view"
+		>
+			<List class="h-4 w-4" />
+		</button>
+	</div>
 </div>
 
 <!-- Course List -->
@@ -154,93 +146,97 @@
 	<div class="card bg-base-100 border border-base-300 p-8 text-center">
 		<p class="text-base-content/60">No courses match your filters.</p>
 	</div>
+{:else if viewMode === "card"}
+	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+		{#each filteredCourses() as course (course.id)}
+			<div class="relative group">
+				<CourseCard
+					title={course.title}
+					description={course.description}
+					status={course.status}
+					itemCount={course.itemCount}
+					enrolmentCount={course.enrolmentCount}
+					totalDurationMinutes={course.totalDurationMinutes}
+					coverImage={course.coverImage}
+					href="/{organisationSlug}/courses/{course.id}"
+					editHref="/{organisationSlug}/courses/{course.id}/edit"
+					view="card"
+				/>
+				<!-- Overlay actions on hover -->
+				<div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+					{#if course.status === "published"}
+						<button
+							class="btn btn-xs btn-ghost bg-base-100/80"
+							title="Archive"
+							onclick={() => handleArchive(course.id)}
+						>
+							<Archive class="h-3 w-3" />
+						</button>
+					{:else if course.status === "archived"}
+						<button
+							class="btn btn-xs btn-ghost bg-base-100/80"
+							title="Restore"
+							onclick={() => handleRestore(course.id)}
+						>
+							<RotateCcw class="h-3 w-3" />
+						</button>
+					{/if}
+					<button
+						class="btn btn-xs btn-ghost bg-base-100/80 text-error"
+						title="Delete"
+						onclick={() => confirmDelete(course.id, course.title)}
+					>
+						<Trash2 class="h-3 w-3" />
+					</button>
+				</div>
+			</div>
+		{/each}
+	</div>
 {:else}
-	<div class="card bg-base-100 border border-base-300">
-		<div class="overflow-x-auto">
-			<table class="table">
-				<thead>
-					<tr>
-						<th>Title</th>
-						<th>Status</th>
-						<th>Items</th>
-						<th>Enrolled</th>
-						<th>Updated</th>
-						<th class="w-28"></th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filteredCourses() as course (course.id)}
-						<tr class="hover">
-							<td>
-								<a
-									href="/{organisationSlug}/courses/{course.id}"
-									class="font-medium hover:underline"
-								>
-									{course.title}
-								</a>
-								{#if course.description}
-									<p class="text-xs text-base-content/50 mt-0.5 line-clamp-1">
-										{course.description}
-									</p>
-								{/if}
-							</td>
-							<td>
-								<span class="badge badge-sm {statusBadgeClass(course.status)}">
-									{course.status}
-								</span>
-							</td>
-							<td class="text-sm">{course.itemCount}</td>
-							<td class="text-sm">{course.enrolmentCount}</td>
-							<td class="text-sm text-base-content/60">
-								{formatDate(course.updatedAt)}
-							</td>
-							<td>
-								<div class="flex gap-1">
-									<a
-										href="/{organisationSlug}/courses/{course.id}"
-										class="btn btn-ghost btn-xs"
-										title="View"
-									>
-										<Eye class="h-3.5 w-3.5" />
-									</a>
-									<a
-										href="/{organisationSlug}/courses/{course.id}/edit"
-										class="btn btn-ghost btn-xs"
-										title="Edit"
-									>
-										<Pencil class="h-3.5 w-3.5" />
-									</a>
-									{#if course.status === "published"}
-										<button
-											class="btn btn-ghost btn-xs"
-											title="Archive"
-											onclick={() => handleArchive(course.id)}
-										>
-											<Archive class="h-3.5 w-3.5" />
-										</button>
-									{:else if course.status === "archived"}
-										<button
-											class="btn btn-ghost btn-xs"
-											title="Restore to Draft"
-											onclick={() => handleRestore(course.id)}
-										>
-											<RotateCcw class="h-3.5 w-3.5" />
-										</button>
-									{/if}
-									<button
-										class="btn btn-ghost btn-xs text-error"
-										title="Delete"
-										onclick={() => confirmDelete(course.id, course.title)}
-									>
-										<Trash2 class="h-3.5 w-3.5" />
-									</button>
-								</div>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
+	<div class="space-y-2">
+		{#each filteredCourses() as course (course.id)}
+			<div class="relative group">
+				<CourseCard
+					title={course.title}
+					description={course.description}
+					status={course.status}
+					itemCount={course.itemCount}
+					enrolmentCount={course.enrolmentCount}
+					totalDurationMinutes={course.totalDurationMinutes}
+					coverImage={course.coverImage}
+					href="/{organisationSlug}/courses/{course.id}"
+					editHref="/{organisationSlug}/courses/{course.id}/edit"
+					view="list"
+				/>
+				<!-- Actions on hover -->
+				<div class="absolute top-1/2 -translate-y-1/2 right-20 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+					{#if course.status === "published"}
+						<button
+							class="btn btn-xs btn-ghost"
+							title="Archive"
+							onclick={() => handleArchive(course.id)}
+						>
+							<Archive class="h-3 w-3" />
+						</button>
+					{:else if course.status === "archived"}
+						<button
+							class="btn btn-xs btn-ghost"
+							title="Restore"
+							onclick={() => handleRestore(course.id)}
+						>
+							<RotateCcw class="h-3 w-3" />
+						</button>
+					{/if}
+					<button
+						class="btn btn-xs btn-ghost text-error"
+						title="Delete"
+						onclick={() => confirmDelete(course.id, course.title)}
+					>
+						<Trash2 class="h-3 w-3" />
+					</button>
+				</div>
+			</div>
+		{/each}
 	</div>
 {/if}
 

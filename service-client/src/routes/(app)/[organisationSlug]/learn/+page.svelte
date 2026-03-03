@@ -4,6 +4,7 @@
 	import { Play, CheckCircle, Clock } from "lucide-svelte";
 	import { FEATURES } from "$lib/config/features";
 	import { enrolInCourse } from "$lib/api/enrolments.remote";
+	import CourseCard from "$lib/components/courses/CourseCard.svelte";
 
 	let { data }: PageProps = $props();
 	let organisationSlug = $derived(data.organisation.slug);
@@ -56,48 +57,43 @@
 	<h2 class="text-lg font-semibold mb-3">My Courses</h2>
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
 		{#each enrolmentsList as enrolment (enrolment.id)}
-			<a
-				href="/{organisationSlug}/learn/{enrolment.courseId}"
-				class="card bg-base-100 border border-base-300 hover:border-primary/40 transition-colors"
-			>
-				<div class="card-body p-5">
-					<h3 class="card-title text-base">{enrolment.course.title}</h3>
-					{#if enrolment.course.description}
-						<p class="text-sm text-base-content/60 line-clamp-2">{enrolment.course.description}</p>
-					{/if}
-
-					<!-- Progress -->
-					<div class="mt-3">
-						<div class="flex items-center justify-between text-xs text-base-content/60 mb-1">
-							<span>{enrolment.progress.completedItems} / {enrolment.progress.totalItems} items</span>
-							<span class="font-medium">{enrolment.progress.percentage}%</span>
-						</div>
-						<progress
-							class="progress progress-primary w-full"
-							value={enrolment.progress.percentage}
-							max="100"
-						></progress>
-					</div>
-
-					<div class="flex items-center justify-between mt-2">
-						<span class="text-xs text-base-content/50 flex items-center gap-1">
-							<Clock class="h-3 w-3" />
-							Enrolled {formatDate(enrolment.enrolledAt)}
+			<div class="relative">
+				<CourseCard
+					title={enrolment.course.title}
+					description={enrolment.course.description || ""}
+					status={enrolment.course.status}
+					itemCount={enrolment.progress.totalItems}
+					enrolmentCount={0}
+					coverImage={enrolment.course.coverImage}
+					href="/{organisationSlug}/learn/{enrolment.courseId}"
+					view="card"
+					progress={{
+						completedItems: enrolment.progress.completedItems,
+						totalItems: enrolment.progress.totalItems,
+						percentage: enrolment.progress.percentage,
+					}}
+				/>
+				<!-- Status overlay -->
+				<div class="absolute top-2 right-2">
+					{#if enrolment.status === "completed"}
+						<span class="badge badge-success badge-sm gap-1">
+							<CheckCircle class="h-3 w-3" />
+							Complete
 						</span>
-						{#if enrolment.status === "completed"}
-							<span class="badge badge-success badge-sm gap-1">
-								<CheckCircle class="h-3 w-3" />
-								Complete
-							</span>
-						{:else}
-							<span class="badge badge-info badge-sm gap-1">
-								<Play class="h-3 w-3" />
-								Continue
-							</span>
-						{/if}
-					</div>
+					{:else}
+						<span class="badge badge-info badge-sm gap-1">
+							<Play class="h-3 w-3" />
+							Continue
+						</span>
+					{/if}
 				</div>
-			</a>
+				<div class="absolute bottom-2 right-4">
+					<span class="text-xs text-base-content/50 flex items-center gap-1">
+						<Clock class="h-3 w-3" />
+						Enrolled {formatDate(enrolment.enrolledAt)}
+					</span>
+				</div>
+			</div>
 		{/each}
 	</div>
 {/if}
@@ -119,6 +115,14 @@
 					<div class="flex items-center gap-2 mt-2 text-xs text-base-content/50">
 						<span>{course.itemCount} items</span>
 						<span>{course.enrolmentCount} enrolled</span>
+						{#if course.totalDurationMinutes && course.totalDurationMinutes > 0}
+							<span class="flex items-center gap-0.5">
+								<Clock class="h-3 w-3" />
+								{course.totalDurationMinutes < 60
+									? `${course.totalDurationMinutes} min`
+									: `${Math.floor(course.totalDurationMinutes / 60)}h ${course.totalDurationMinutes % 60 > 0 ? `${course.totalDurationMinutes % 60}m` : ""}`}
+							</span>
+						{/if}
 					</div>
 
 					<div class="card-actions mt-3">

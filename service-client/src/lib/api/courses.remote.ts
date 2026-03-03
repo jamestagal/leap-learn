@@ -11,7 +11,7 @@
 import { query, command } from "$app/server";
 import * as v from "valibot";
 import { db } from "$lib/server/db";
-import { courses, courseItems, h5pContent, h5pLibraries, enrolments } from "$lib/server/schema";
+import { courses, courseItems, courseSections, h5pContent, h5pLibraries, enrolments } from "$lib/server/schema";
 import { error } from "@sveltejs/kit";
 import {
 	getOrganisationContext,
@@ -22,7 +22,7 @@ import { getUserId } from "$lib/server/auth";
 import { eq, and, count, sql, asc, desc, isNull, ilike } from "drizzle-orm";
 import { enforceCourseLimit } from "$lib/server/subscription";
 import { logActivity } from "$lib/server/db-helpers";
-import type { CourseListItem, CourseWithItems, CourseItemWithContent } from "./courses.types";
+import type { CourseListItem, CourseWithItems, CourseItemWithContent, CourseSection } from "./courses.types";
 
 // =============================================================================
 // Validation Schemas
@@ -56,17 +56,45 @@ const AddCourseItemSchema = v.object({
 	contentId: v.optional(v.pipe(v.string(), v.uuid())),
 	title: v.pipe(v.string(), v.minLength(1)),
 	bodyMarkdown: v.optional(v.string()),
+	sectionId: v.optional(v.nullable(v.pipe(v.string(), v.uuid()))),
+	estimatedDurationMinutes: v.optional(v.nullable(v.pipe(v.number(), v.minValue(1), v.maxValue(600)))),
 });
 
 const UpdateCourseItemSchema = v.object({
 	itemId: v.pipe(v.string(), v.uuid()),
 	title: v.optional(v.pipe(v.string(), v.minLength(1))),
 	bodyMarkdown: v.optional(v.string()),
+	sectionId: v.optional(v.nullable(v.pipe(v.string(), v.uuid()))),
+	estimatedDurationMinutes: v.optional(v.nullable(v.pipe(v.number(), v.minValue(1), v.maxValue(600)))),
 });
 
 const ReorderCourseItemsSchema = v.object({
 	courseId: v.pipe(v.string(), v.uuid()),
 	items: v.array(
+		v.object({
+			id: v.pipe(v.string(), v.uuid()),
+			sectionId: v.optional(v.nullable(v.pipe(v.string(), v.uuid()))),
+			sortOrder: v.number(),
+		}),
+	),
+});
+
+// Section schemas
+const CreateSectionSchema = v.object({
+	courseId: v.pipe(v.string(), v.uuid()),
+	title: v.pipe(v.string(), v.minLength(1)),
+	description: v.optional(v.string()),
+});
+
+const UpdateSectionSchema = v.object({
+	sectionId: v.pipe(v.string(), v.uuid()),
+	title: v.optional(v.pipe(v.string(), v.minLength(1))),
+	description: v.optional(v.string()),
+});
+
+const ReorderSectionsSchema = v.object({
+	courseId: v.pipe(v.string(), v.uuid()),
+	sections: v.array(
 		v.object({
 			id: v.pipe(v.string(), v.uuid()),
 			sortOrder: v.number(),
@@ -118,6 +146,17 @@ export const getCourses = query(GetCoursesFiltersSchema, async (filters) => {
 		.groupBy(enrolments.courseId)
 		.as("enrolment_counts");
 
+	// Subquery for total duration
+	const durationSq = db
+		.select({
+			courseId: courseItems.courseId,
+			totalDuration: sql<number>`COALESCE(SUM(${courseItems.estimatedDurationMinutes}), 0)`.as("total_duration"),
+		})
+		.from(courseItems)
+		.where(isNull(courseItems.removedAt))
+		.groupBy(courseItems.courseId)
+		.as("duration_totals");
+
 	const results = await db
 		.select({
 			id: courses.id,
@@ -132,10 +171,12 @@ export const getCourses = query(GetCoursesFiltersSchema, async (filters) => {
 			updatedAt: courses.updatedAt,
 			itemCount: sql<number>`COALESCE(${itemCountSq.itemCount}, 0)`.mapWith(Number),
 			enrolmentCount: sql<number>`COALESCE(${enrolmentCountSq.enrolmentCount}, 0)`.mapWith(Number),
+			totalDurationMinutes: sql<number>`COALESCE(${durationSq.totalDuration}, 0)`.mapWith(Number),
 		})
 		.from(courses)
 		.leftJoin(itemCountSq, eq(courses.id, itemCountSq.courseId))
 		.leftJoin(enrolmentCountSq, eq(courses.id, enrolmentCountSq.courseId))
+		.leftJoin(durationSq, eq(courses.id, durationSq.courseId))
 		.where(and(...conditions))
 		.orderBy(desc(courses.updatedAt))
 		.limit(limit)
@@ -145,7 +186,7 @@ export const getCourses = query(GetCoursesFiltersSchema, async (filters) => {
 });
 
 /**
- * Get a single course with its items and H5P content details.
+ * Get a single course with its items, sections, and H5P content details.
  */
 export const getCourse = query(v.pipe(v.string(), v.uuid()), async (courseId) => {
 	const context = await getOrganisationContext();
@@ -167,18 +208,35 @@ export const getCourse = query(v.pipe(v.string(), v.uuid()), async (courseId) =>
 		throw error(404, "Course not found");
 	}
 
+	// Fetch sections
+	const sections = await db
+		.select({
+			id: courseSections.id,
+			courseId: courseSections.courseId,
+			title: courseSections.title,
+			description: courseSections.description,
+			sortOrder: courseSections.sortOrder,
+			createdAt: courseSections.createdAt,
+			updatedAt: courseSections.updatedAt,
+		})
+		.from(courseSections)
+		.where(eq(courseSections.courseId, courseId))
+		.orderBy(asc(courseSections.sortOrder));
+
 	// Fetch items with H5P content and library info
 	const items = await db
 		.select({
 			id: courseItems.id,
 			courseId: courseItems.courseId,
 			contentId: courseItems.contentId,
+			sectionId: courseItems.sectionId,
 			sortOrder: courseItems.sortOrder,
 			title: courseItems.title,
 			itemType: courseItems.itemType,
 			bodyMarkdown: courseItems.bodyMarkdown,
 			removedAt: courseItems.removedAt,
 			createdAt: courseItems.createdAt,
+			estimatedDurationMinutes: courseItems.estimatedDurationMinutes,
 			contentTitle: h5pContent.title,
 			contentStatus: h5pContent.status,
 			libraryTitle: h5pLibraries.title,
@@ -205,6 +263,7 @@ export const getCourse = query(v.pipe(v.string(), v.uuid()), async (courseId) =>
 		updatedAt: course.updatedAt,
 		createdBy: course.createdBy,
 		items: items as CourseItemWithContent[],
+		sections: sections as CourseSection[],
 	};
 
 	return result;
@@ -416,10 +475,12 @@ export const addCourseItem = command(AddCourseItemSchema, async (data) => {
 		.values({
 			courseId: data.courseId,
 			contentId: data.contentId || null,
+			sectionId: data.sectionId ?? null,
 			sortOrder: nextSortOrder,
 			title: data.title,
 			itemType: data.itemType,
 			bodyMarkdown: data.bodyMarkdown || null,
+			estimatedDurationMinutes: data.estimatedDurationMinutes ?? null,
 		})
 		.returning();
 
@@ -498,7 +559,7 @@ export const removeCourseItem = command(v.pipe(v.string(), v.uuid()), async (ite
 });
 
 /**
- * Update a course item's title or body markdown.
+ * Update a course item's title, body markdown, section, or duration.
  */
 export const updateCourseItem = command(UpdateCourseItemSchema, async (data) => {
 	await requireOrganisationRole(["owner", "admin"]);
@@ -539,6 +600,8 @@ export const updateCourseItem = command(UpdateCourseItemSchema, async (data) => 
 
 	if (data.title !== undefined) updates["title"] = data.title;
 	if (data.bodyMarkdown !== undefined) updates["bodyMarkdown"] = data.bodyMarkdown;
+	if (data.sectionId !== undefined) updates["sectionId"] = data.sectionId;
+	if (data.estimatedDurationMinutes !== undefined) updates["estimatedDurationMinutes"] = data.estimatedDurationMinutes;
 
 	await db.update(courseItems).set(updates).where(eq(courseItems.id, data.itemId));
 
@@ -555,7 +618,7 @@ export const updateCourseItem = command(UpdateCourseItemSchema, async (data) => 
 });
 
 /**
- * Reorder course items by updating their sort_order values.
+ * Reorder course items by updating their sort_order and section assignment.
  */
 export const reorderCourseItems = command(ReorderCourseItemsSchema, async (data) => {
 	const context = await requireOrganisationRole(["owner", "admin"]);
@@ -577,11 +640,18 @@ export const reorderCourseItems = command(ReorderCourseItemsSchema, async (data)
 		throw error(404, "Course not found");
 	}
 
-	// Batch update each item's sort_order
+	// Batch update each item's sort_order and section
 	for (const item of data.items) {
+		const updates: Record<string, unknown> = {
+			sortOrder: item.sortOrder,
+			updatedAt: new Date(),
+		};
+		if (item.sectionId !== undefined) {
+			updates["sectionId"] = item.sectionId;
+		}
 		await db
 			.update(courseItems)
-			.set({ sortOrder: item.sortOrder, updatedAt: new Date() })
+			.set(updates)
 			.where(and(eq(courseItems.id, item.id), eq(courseItems.courseId, data.courseId)));
 	}
 
@@ -647,5 +717,211 @@ export const publishCourse = command(v.pipe(v.string(), v.uuid()), async (course
 	// Log activity
 	await logActivity("course.published", "course", courseId, {
 		newValues: { status: "published", title: course.title },
+	});
+});
+
+// =============================================================================
+// Section Commands
+// =============================================================================
+
+/**
+ * Create a new section within a course.
+ */
+export const createSection = command(CreateSectionSchema, async (data) => {
+	const context = await requireOrganisationRole(["owner", "admin"]);
+
+	// Verify course belongs to org
+	const [course] = await db
+		.select({ id: courses.id })
+		.from(courses)
+		.where(
+			and(
+				eq(courses.id, data.courseId),
+				eq(courses.orgId, context.organisationId),
+				isNull(courses.deletedAt),
+			),
+		)
+		.limit(1);
+
+	if (!course) {
+		throw error(404, "Course not found");
+	}
+
+	// Get max sort_order for sections in this course
+	const [maxSort] = await db
+		.select({
+			maxOrder: sql<number>`COALESCE(MAX(${courseSections.sortOrder}), -1)`.mapWith(Number),
+		})
+		.from(courseSections)
+		.where(eq(courseSections.courseId, data.courseId));
+
+	const nextSortOrder = (maxSort?.maxOrder ?? -1) + 1;
+
+	const [section] = await db
+		.insert(courseSections)
+		.values({
+			courseId: data.courseId,
+			title: data.title,
+			description: data.description || "",
+			sortOrder: nextSortOrder,
+		})
+		.returning();
+
+	if (!section) {
+		throw error(500, "Failed to create section");
+	}
+
+	// Update course's updatedAt
+	await db
+		.update(courses)
+		.set({ updatedAt: new Date() })
+		.where(eq(courses.id, data.courseId));
+
+	await logActivity("course.section.created", "course_section", section.id, {
+		newValues: { courseId: data.courseId, title: data.title },
+	});
+
+	return section;
+});
+
+/**
+ * Update a section's title or description.
+ */
+export const updateSection = command(UpdateSectionSchema, async (data) => {
+	await requireOrganisationRole(["owner", "admin"]);
+
+	// Get section and verify org ownership via course
+	const [section] = await db
+		.select({
+			id: courseSections.id,
+			courseId: courseSections.courseId,
+		})
+		.from(courseSections)
+		.where(eq(courseSections.id, data.sectionId))
+		.limit(1);
+
+	if (!section) {
+		throw error(404, "Section not found");
+	}
+
+	const context = await getOrganisationContext();
+	const [course] = await db
+		.select({ id: courses.id })
+		.from(courses)
+		.where(
+			and(
+				eq(courses.id, section.courseId),
+				eq(courses.orgId, context.organisationId),
+				isNull(courses.deletedAt),
+			),
+		)
+		.limit(1);
+
+	if (!course) {
+		throw error(404, "Course not found");
+	}
+
+	const updates: Record<string, unknown> = { updatedAt: new Date() };
+	if (data.title !== undefined) updates["title"] = data.title;
+	if (data.description !== undefined) updates["description"] = data.description;
+
+	await db.update(courseSections).set(updates).where(eq(courseSections.id, data.sectionId));
+
+	await db
+		.update(courses)
+		.set({ updatedAt: new Date() })
+		.where(eq(courses.id, section.courseId));
+
+	await logActivity("course.section.updated", "course_section", data.sectionId, {
+		newValues: updates,
+	});
+});
+
+/**
+ * Delete a section (hard delete). Items get section_id = NULL (via ON DELETE SET NULL).
+ */
+export const deleteSection = command(v.pipe(v.string(), v.uuid()), async (sectionId) => {
+	await requireOrganisationRole(["owner", "admin"]);
+
+	const [section] = await db
+		.select({
+			id: courseSections.id,
+			courseId: courseSections.courseId,
+			title: courseSections.title,
+		})
+		.from(courseSections)
+		.where(eq(courseSections.id, sectionId))
+		.limit(1);
+
+	if (!section) {
+		throw error(404, "Section not found");
+	}
+
+	const context = await getOrganisationContext();
+	const [course] = await db
+		.select({ id: courses.id })
+		.from(courses)
+		.where(
+			and(
+				eq(courses.id, section.courseId),
+				eq(courses.orgId, context.organisationId),
+				isNull(courses.deletedAt),
+			),
+		)
+		.limit(1);
+
+	if (!course) {
+		throw error(404, "Course not found");
+	}
+
+	// Hard delete — items get section_id = NULL via ON DELETE SET NULL
+	await db.delete(courseSections).where(eq(courseSections.id, sectionId));
+
+	await db
+		.update(courses)
+		.set({ updatedAt: new Date() })
+		.where(eq(courses.id, section.courseId));
+
+	await logActivity("course.section.deleted", "course_section", sectionId, {
+		oldValues: { courseId: section.courseId, title: section.title },
+	});
+});
+
+/**
+ * Reorder sections within a course.
+ */
+export const reorderSections = command(ReorderSectionsSchema, async (data) => {
+	const context = await requireOrganisationRole(["owner", "admin"]);
+
+	const [course] = await db
+		.select({ id: courses.id })
+		.from(courses)
+		.where(
+			and(
+				eq(courses.id, data.courseId),
+				eq(courses.orgId, context.organisationId),
+				isNull(courses.deletedAt),
+			),
+		)
+		.limit(1);
+
+	if (!course) {
+		throw error(404, "Course not found");
+	}
+
+	for (const section of data.sections) {
+		await db
+			.update(courseSections)
+			.set({ sortOrder: section.sortOrder, updatedAt: new Date() })
+			.where(and(eq(courseSections.id, section.id), eq(courseSections.courseId, data.courseId)));
+	}
+
+	await db
+		.update(courses)
+		.set({ updatedAt: new Date() })
+		.where(eq(courses.id, data.courseId));
+
+	await logActivity("course.sections.reordered", "course", data.courseId, {
+		newValues: { sectionCount: data.sections.length },
 	});
 });
