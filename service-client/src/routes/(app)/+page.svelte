@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Building2, Plus } from 'lucide-svelte';
+	import LandingPage from '$lib/components/landing/LandingPage.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -32,18 +33,5 @@
 		</div>
 	</div>
 {:else}
-	<!-- Not authenticated — redirect to login -->
-	<div class="flex min-h-[60vh] items-center justify-center">
-		<div class="card bg-base-100 border border-base-300 max-w-md w-full">
-			<div class="card-body items-center text-center">
-				<h1 class="text-2xl font-bold">LeapLearn</h1>
-				<p class="text-base-content/70">
-					Please sign in to continue.
-				</p>
-				<div class="mt-6">
-					<a href="/login" class="btn btn-primary">Sign In</a>
-				</div>
-			</div>
-		</div>
-	</div>
+	<LandingPage />
 {/if}

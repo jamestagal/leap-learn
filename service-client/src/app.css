@@ -6,8 +6,17 @@
 		dim;
 }
 
+@font-face {
+	font-family: 'Zodiak';
+	src: url('/fonts/Zodiak-Bold.woff2') format('woff2');
+	font-weight: 700;
+	font-display: swap;
+	font-style: normal;
+}
+
 @theme {
 	--font-poppins: Poppins, sans-serif;
+	--font-zodiak: Zodiak, serif;
 }
 
 * {
@@ -34,4 +43,91 @@ body {
 
 .animate-progress {
 	animation: progress 2s ease-out forwards;
+}
+
+@keyframes fade-up {
+	from { opacity: 0; transform: translateY(24px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+	0%, 100% { transform: translateY(0px); }
+	50% { transform: translateY(-12px); }
+}
+
+.animate-fade-up { animation: fade-up 0.6s ease-out both; }
+.animate-fade-up-delay-1 { animation: fade-up 0.6s ease-out 0.1s both; }
+.animate-fade-up-delay-2 { animation: fade-up 0.6s ease-out 0.2s both; }
+.animate-fade-up-delay-3 { animation: fade-up 0.6s ease-out 0.3s both; }
+.animate-fade-up-delay-4 { animation: fade-up 0.6s ease-out 0.4s both; }
+.animate-fade-up-delay-5 { animation: fade-up 0.6s ease-out 0.5s both; }
+.animate-float { animation: float 6s ease-in-out infinite; }
+
+.bg-dot-pattern {
+	background-image: radial-gradient(circle, oklch(from var(--color-base-content) l c h / 0.07) 1px, transparent 1px);
+	background-size: 24px 24px;
+}
+
+/* Animated border — gradient travels around the card edge */
+@property --border-angle {
+	syntax: "<angle>";
+	initial-value: 0deg;
+	inherits: false;
+}
+
+@keyframes border-spin {
+	from { --border-angle: 0deg; }
+	to { --border-angle: 360deg; }
+}
+
+.hero-card-border {
+	padding: 2px;
+	border-radius: 1rem;
+	position: relative;
+	background-image: conic-gradient(
+		from var(--border-angle),
+		oklch(from var(--color-primary) l c h / 0.6),
+		oklch(from var(--color-secondary) l c h / 0.35),
+		oklch(from var(--color-accent) l c h / 0.5),
+		oklch(from var(--color-info) l c h / 0.35),
+		oklch(from var(--color-primary) l c h / 0.6)
+	);
+	animation:
+		border-spin var(--spin-duration, 4s) linear infinite var(--spin-delay, 0s),
+		float var(--float-duration, 6s) ease-in-out infinite var(--float-delay, 0s);
+}
+
+.hero-card-border::before {
+	content: '';
+	position: absolute;
+	inset: -2px;
+	border-radius: inherit;
+	background: inherit;
+	filter: blur(0.6rem);
+	opacity: 0.3;
+	z-index: -1;
+}
+
+.hero-card-inner {
+	background-color: var(--color-base-100);
+	border-radius: calc(1rem - 2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.animate-fade-up, .animate-fade-up-delay-1,
+	.animate-fade-up-delay-2, .animate-fade-up-delay-3,
+	.animate-fade-up-delay-4, .animate-fade-up-delay-5,
+	.animate-float {
+		animation: none !important;
+		opacity: 1;
+		transform: none;
+	}
+	.hero-card-border {
+		animation: none !important;
+		background: oklch(from var(--color-base-300) l c h / 0.5);
+		transform: none;
+	}
+	.hero-card-border::before {
+		display: none;
+	}
 }
