@@ -43,7 +43,7 @@
 			<h2
 				class="font-zodiak text-2xl md:text-3xl lg:text-4xl font-bold text-base-content tracking-tight"
 			>
-				From Sign-Up to <span class="text-primary">First Course in Minutes</span>
+				From Sign-Up to<br /><span class="text-primary">First Course in Minutes</span>
 			</h2>
 		</div>
 
