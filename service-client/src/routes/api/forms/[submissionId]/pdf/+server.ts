@@ -4,24 +4,34 @@
  * GET /api/forms/[submissionId]/pdf - Download form submission as PDF
  *
  * Uses Gotenberg for HTML-to-PDF conversion with professional template.
- * Requires organisation membership and submission access permission.
+ * Requires authentication and organisation membership.
  */
 
-import { json } from "@sveltejs/kit";
+import { json, error } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import { db } from "$lib/server/db";
-import { formSubmissions, organisationForms, organisations, organisationProfiles } from "$lib/server/schema";
-import { eq } from "drizzle-orm";
+import {
+	formSubmissions,
+	organisationForms,
+	organisations,
+	organisationProfiles,
+	organisationMemberships,
+} from "$lib/server/schema";
+import { and, eq } from "drizzle-orm";
 import { generateFormSubmissionPdfHtml } from "$lib/templates/form-submission-pdf";
-import { env } from "$env/dynamic/private";
+import { generatePdf } from "$lib/server/pdf";
 
-const GOTENBERG_URL = env["GOTENBERG_URL"] || "http://localhost:3003";
-
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
 	const { submissionId } = params;
 
 	if (!submissionId) {
 		return json({ error: "Submission ID is required" }, { status: 400 });
+	}
+
+	// Require authentication
+	const userId = locals.user?.id;
+	if (!userId) {
+		throw error(401, "Authentication required");
 	}
 
 	try {
@@ -32,7 +42,10 @@ export const GET: RequestHandler = async ({ params }) => {
 				form: organisationForms,
 			})
 			.from(formSubmissions)
-			.leftJoin(organisationForms, eq(formSubmissions.formId, organisationForms.id))
+			.leftJoin(
+				organisationForms,
+				eq(formSubmissions.formId, organisationForms.id),
+			)
 			.where(eq(formSubmissions.id, submissionId));
 
 		if (!result || !result.submission) {
@@ -45,13 +58,35 @@ export const GET: RequestHandler = async ({ params }) => {
 			return json({ error: "Form not found" }, { status: 404 });
 		}
 
+		// Verify user is an active member of the submission's organisation
+		const [membership] = await db
+			.select({ id: organisationMemberships.id })
+			.from(organisationMemberships)
+			.where(
+				and(
+					eq(organisationMemberships.userId, userId),
+					eq(
+						organisationMemberships.organisationId,
+						submission.organisationId,
+					),
+					eq(organisationMemberships.status, "active"),
+				),
+			);
+
+		if (!membership) {
+			throw error(403, "Access denied");
+		}
+
 		// Fetch organisation and profile
 		const [organisation, profile] = await Promise.all([
 			db.query.organisations.findFirst({
 				where: eq(organisations.id, submission.organisationId),
 			}),
 			db.query.organisationProfiles.findFirst({
-				where: eq(organisationProfiles.organisationId, submission.organisationId),
+				where: eq(
+					organisationProfiles.organisationId,
+					submission.organisationId,
+				),
 			}),
 		]);
 
@@ -78,32 +113,8 @@ export const GET: RequestHandler = async ({ params }) => {
 			profile: profile || null,
 		});
 
-		// Convert to PDF using Gotenberg
-		const formData = new FormData();
-		formData.append("files", new Blob([html], { type: "text/html" }), "index.html");
-
-		// Gotenberg options for A4
-		formData.append("paperWidth", "8.27"); // A4 width in inches
-		formData.append("paperHeight", "11.69"); // A4 height in inches
-		formData.append("marginTop", "0.4");
-		formData.append("marginBottom", "0.4");
-		formData.append("marginLeft", "0.4");
-		formData.append("marginRight", "0.4");
-		formData.append("printBackground", "true");
-		formData.append("preferCssPageSize", "true");
-
-		const pdfResponse = await fetch(`${GOTENBERG_URL}/forms/chromium/convert/html`, {
-			method: "POST",
-			body: formData,
-		});
-
-		if (!pdfResponse.ok) {
-			const errorText = await pdfResponse.text();
-			console.error("Gotenberg error:", errorText);
-			return json({ error: "Failed to generate PDF" }, { status: 500 });
-		}
-
-		const pdfBuffer = await pdfResponse.arrayBuffer();
+		// Generate PDF with shared utility (includes timeout)
+		const pdfBuffer = await generatePdf(html);
 
 		// Generate filename from client business name and form name
 		const clientName = submission.clientBusinessName
@@ -129,8 +140,13 @@ export const GET: RequestHandler = async ({ params }) => {
 			},
 		});
 	} catch (err) {
+		// Re-throw SvelteKit errors (401, 403, etc.)
+		if (err && typeof err === "object" && "status" in err) {
+			throw err;
+		}
 		console.error("PDF generation error:", err);
-		const message = err instanceof Error ? err.message : "PDF generation failed";
+		const message =
+			err instanceof Error ? err.message : "PDF generation failed";
 		return json({ error: message }, { status: 500 });
 	}
 };

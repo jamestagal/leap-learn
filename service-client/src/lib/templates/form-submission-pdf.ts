@@ -10,6 +10,34 @@ import type { Organisation, OrganisationProfile } from "$lib/server/schema";
 import type { FormSchema, FormStep, FormField } from "$lib/types/form-builder";
 import { formatDate as _formatDate } from "$lib/utils/formatting";
 
+/**
+ * Escape HTML special characters to prevent XSS in PDF templates.
+ */
+function escapeHtml(str: string): string {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
+/**
+ * Validate a URL for use in img src — only allow http(s) and data: URIs.
+ * Returns empty string for invalid URLs to prevent injection.
+ */
+function sanitizeImageUrl(url: string): string {
+	const trimmed = url.trim();
+	if (
+		trimmed.startsWith("https://") ||
+		trimmed.startsWith("http://") ||
+		trimmed.startsWith("data:image/")
+	) {
+		return trimmed;
+	}
+	return "";
+}
+
 export interface FormSubmissionPdfData {
 	submission: {
 		id: string;
@@ -210,9 +238,20 @@ export function generateFormSubmissionPdfHtml(
 
 	const statusStyle = getStatusStyle(submission.status);
 
-	// Use organisation branding
-	const logoUrl = organisation.logoUrl;
+	// Use organisation branding (sanitized)
+	const logoUrl = organisation.logoUrl
+		? sanitizeImageUrl(organisation.logoUrl)
+		: "";
 	const accentColor = organisation.primaryColor || "#6366f1";
+	const orgName = escapeHtml(organisation.name);
+	const formTitle = escapeHtml(form.name);
+	const clientName = escapeHtml(
+		submission.clientBusinessName || "Not provided",
+	);
+	const clientEmail = escapeHtml(submission.clientEmail || "Not provided");
+	const orgWebsite = organisation.website
+		? escapeHtml(organisation.website)
+		: "";
 
 	// Render all sections from schema
 	const sectionsHtml = renderDynamicSections(
@@ -229,7 +268,7 @@ export function generateFormSubmissionPdfHtml(
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>${form.name} - ${submission.clientBusinessName || "Response"}</title>
+	<title>${formTitle} - ${clientName}</title>
 	<style>
 		@page {
 			size: A4;
@@ -260,12 +299,12 @@ export function generateFormSubmissionPdfHtml(
 			<div>
 				${
 					logoUrl
-						? `<img src="${logoUrl}" alt="${organisation.name}" style="max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 8px;">`
-						: `<div style="font-size: 22px; font-weight: bold; color: ${accentColor};">${organisation.name}</div>`
+						? `<img src="${logoUrl}" alt="${orgName}" style="max-height: 50px; max-width: 180px; object-fit: contain; margin-bottom: 8px;">`
+						: `<div style="font-size: 22px; font-weight: bold; color: ${accentColor};">${orgName}</div>`
 				}
 			</div>
 			<div style="text-align: right;">
-				<div style="font-size: 22px; font-weight: bold; color: #111827; margin-bottom: 4px;">${form.name}</div>
+				<div style="font-size: 22px; font-weight: bold; color: #111827; margin-bottom: 4px;">${formTitle}</div>
 				<div style="font-size: 14px; color: #6b7280;">Form Submission</div>
 			</div>
 		</div>
@@ -275,7 +314,7 @@ export function generateFormSubmissionPdfHtml(
 			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
 				<div>
 					<div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Client</div>
-					<div style="font-size: 16px; font-weight: 600; color: #111827;">${submission.clientBusinessName || "Not provided"}</div>
+					<div style="font-size: 16px; font-weight: 600; color: #111827;">${clientName}</div>
 				</div>
 				<div style="text-align: right;">
 					<div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Status</div>
@@ -285,7 +324,7 @@ export function generateFormSubmissionPdfHtml(
 				</div>
 				<div>
 					<div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Email</div>
-					<div style="font-size: 14px; color: #374151;">${submission.clientEmail || "Not provided"}</div>
+					<div style="font-size: 14px; color: #374151;">${clientEmail}</div>
 				</div>
 				<div style="text-align: right;">
 					<div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Submitted</div>
@@ -299,8 +338,8 @@ export function generateFormSubmissionPdfHtml(
 
 		<!-- Footer -->
 		<div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 12px; color: #9ca3af;">
-			<div>Generated on ${formatDate(new Date())} by ${organisation.name}</div>
-			${organisation.website ? `<div style="margin-top: 4px;">${organisation.website}</div>` : ""}
+			<div>Generated on ${formatDate(new Date())} by ${orgName}</div>
+			${orgWebsite ? `<div style="margin-top: 4px;">${orgWebsite}</div>` : ""}
 		</div>
 	</div>
 </body>
