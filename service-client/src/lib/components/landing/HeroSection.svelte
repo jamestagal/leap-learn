@@ -29,10 +29,10 @@
 				</h1>
 
 				<p
-					class="text-lg text-base-content/60 leading-relaxed mt-6 max-w-xl animate-fade-up-delay-2"
+					class="text-xl text-base-content/60 leading-relaxed mt-6 max-w-xl animate-fade-up-delay-2"
 				>
-					Author interactive content, organise it into courses, and
-					deliver it to your learners — all in one place.
+					<strong class="text-primary/80">Author. Organise. Deliver.</strong><br />
+					Everything your learners need, all in one place.
 				</p>
 
 				<div class="flex flex-wrap gap-4 mt-8 animate-fade-up-delay-3">
