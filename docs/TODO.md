@@ -1,6 +1,6 @@
 # LeapLearn — Feature Roadmap & TODO
 
-**Last updated:** 2026-03-05
+**Last updated:** 2026-07-22
 **Source docs:** `Revised_Migration_Plan_v3.md`, `feature-spec-library-tiers.md`, `super-admin-h5p-extension-plan.md`, `h5p-svar-implementation-guide-LEAP.md`, `phase-4-durable-objects-progress-tracking.md`, `text-field-improvements-plan.md`
 
 ---
@@ -74,6 +74,11 @@
 - [x] H5P state save — SvelteKit proxy with feature flag (`STATE_SAVE_TARGET`)
 - [x] H5P state save — Sync XHR preload in embed template
 - [x] H5P state save — E2E tested (save + restore working)
+- [x] H5P state save — Go backend flush endpoint for DO alarm sync
+- [x] H5P state save — SQLC queries for h5p_content_user_data (upsert/select)
+- [x] H5P state save — SvelteKit content-user-data proxy route
+- [x] H5P state save — Docker Compose STATE_SAVE_TARGET env var
+- [x] PDF form submission generation improvements (shared utilities, better formatting)
 
 ### Remaining — State Save Completion
 - [ ] **DO alarm flush to PostgreSQL** — Currently untested because `GO_BACKEND_URL` in Worker points to production. Need to either: (a) deploy Worker to Cloudflare and test with production Go backend, or (b) expose local Go backend via tunnel for testing
@@ -200,7 +205,7 @@ Direct PostgreSQL pipeline works but has limitations at scale: lost events on ta
 
 ## Phase 5: Deployment — 📋 PLANNED
 
-- [ ] Update `docker-compose.production.yml` with H5P config
+- [x] Update `docker-compose.production.yml` with H5P config
 - [ ] Configure Cloudflare R2 for production (replace MinIO)
 - [ ] Deploy DO Worker to Cloudflare (h5p-state)
 - [ ] H5P-specific environment variables in production
