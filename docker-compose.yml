@@ -84,6 +84,9 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS}
       AZBLOB_ACCOUNT_NAME: ${AZBLOB_ACCOUNT_NAME}
       AZBLOB_ACCOUNT_KEY: ${AZBLOB_ACCOUNT_KEY}
+      #
+      # H5P State Save (DO flush)
+      STATE_SERVICE_TOKEN: leaplearn-state-dev-2026
 
   admin:
     container_name: leaplearn-admin
