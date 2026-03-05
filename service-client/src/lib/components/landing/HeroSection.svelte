@@ -18,22 +18,21 @@
 				<p
 					class="text-sm font-medium uppercase tracking-widest text-primary mb-4 animate-fade-up"
 				>
-					Interactive Learning, Made Simple
+					H5P-Powered. Educator-First.
 				</p>
 
 				<h1
 					class="font-zodiak text-4xl md:text-5xl lg:text-6xl font-bold text-base-content tracking-tight leading-[1.1] animate-fade-up-delay-1"
 				>
-					Build H5P Courses<br />
-					<span class="text-primary">That Actually Engage</span>
+					Modern Learning,<br />
+					<span class="text-primary">Completely Reimagined</span>
 				</h1>
 
 				<p
-					class="text-lg text-base-content/60 leading-relaxed mt-6 max-w-lg animate-fade-up-delay-2"
+					class="text-lg text-base-content/60 leading-relaxed mt-6 max-w-xl animate-fade-up-delay-2"
 				>
-					Create interactive quizzes, drag-and-drop activities, and multimedia lessons
-					using 40+ H5P content types. Organise them into courses and deliver them to your
-					learners — no coding required.
+					Author interactive content, organise it into courses, and
+					deliver it to your learners — all in one place.
 				</p>
 
 				<div class="flex flex-wrap gap-4 mt-8 animate-fade-up-delay-3">
