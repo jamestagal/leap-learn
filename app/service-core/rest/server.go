@@ -132,7 +132,7 @@ func corsMiddleware(cfg *config.Config, next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", cfg.ClientURL)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Api-Key, X-User-Id")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		// Handle preflight requests
@@ -161,7 +161,7 @@ func writeResponse(cfg *config.Config, w http.ResponseWriter, r *http.Request, d
 	w.Header().Set("Access-Control-Allow-Origin", cfg.ClientURL)
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Api-Key, X-User-Id")
 
 	if err != nil {
 		var unauthorizedError pkg.UnauthorizedError

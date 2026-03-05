@@ -149,7 +149,16 @@
       "Bash(gh auth status)",
       "Bash(mkdir:*)",
       "WebFetch(domain:h5p.org)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(tr ;:*)",
+      "WebFetch(domain:help.h5p.com)",
+      "WebFetch(domain:documentation.h5p.com)",
+      "Bash(__NEW_LINE_ee7205e51f473408__ echo:*)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:h5p.com)",
+      "WebFetch(domain:docs.lumi.education)",
+      "Bash(sed:*)",
+      "Bash(git clone:*)"
     ]
   }
 }

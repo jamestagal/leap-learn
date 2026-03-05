@@ -1,0 +1,19 @@
+name = "leaplearn-h5p-state"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[durable_objects]
+bindings = [
+  { name = "CONTENT_STATE", class_name = "ContentStateObject" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["ContentStateObject"]
+
+[vars]
+GO_BACKEND_URL = "https://api.leaplearn.io"
+
+# Secrets (set via `wrangler secret put`):
+# PUBLIC_KEY_PEM        — JWT verification key (Ed25519 public key)
+# STATE_SERVICE_TOKEN   — X-Api-Key for DO → Go flush calls

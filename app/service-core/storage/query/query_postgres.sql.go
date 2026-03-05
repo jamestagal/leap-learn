@@ -704,6 +704,77 @@ func (q *Queries) GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.
 	return items, nil
 }
 
+const getH5PLibraryEditorDependencyTree = `-- name: GetH5PLibraryEditorDependencyTree :many
+WITH RECURSIVE dep_tree AS (
+    SELECT d.depends_on_id AS library_id, 0 AS depth
+    FROM h5p_library_dependencies d
+    WHERE d.library_id = $1
+      AND d.dependency_type = 'editor'
+    UNION
+    SELECT d.depends_on_id, dt.depth + 1
+    FROM h5p_library_dependencies d
+    JOIN dep_tree dt ON dt.library_id = d.library_id
+    WHERE dt.depth < 20
+      AND d.dependency_type IN ('preloaded', 'editor')
+),
+dep_max_depth AS (
+    SELECT library_id, MAX(depth) AS max_depth
+    FROM dep_tree
+    GROUP BY library_id
+)
+SELECT l.id, l.created_at, l.updated_at, l.machine_name, l.major_version, l.minor_version, l.patch_version, l.title, l.origin, l.metadata_json, l.categories, l.keywords, l.screenshots, l.description, l.icon_path, l.package_path, l.extracted_path, l.runnable, l.restricted
+FROM dep_max_depth dmd
+JOIN h5p_libraries l ON l.id = dmd.library_id
+ORDER BY dmd.max_depth DESC
+`
+
+// Returns all transitive EDITOR dependencies ordered deepest-first (topological).
+// Starts from 'editor' deps of the root library, then follows both 'editor' and
+// 'preloaded' deps of those editor libraries (since editor libs can have preloaded deps).
+// Used by the editor to load widget JS/CSS (e.g. H5PEditor.ShowWhen, H5PEditor.RangeList).
+func (q *Queries) GetH5PLibraryEditorDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error) {
+	rows, err := q.db.QueryContext(ctx, getH5PLibraryEditorDependencyTree, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []H5pLibrary
+	for rows.Next() {
+		var i H5pLibrary
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.MachineName,
+			&i.MajorVersion,
+			&i.MinorVersion,
+			&i.PatchVersion,
+			&i.Title,
+			&i.Origin,
+			&i.MetadataJson,
+			pq.Array(&i.Categories),
+			pq.Array(&i.Keywords),
+			pq.Array(&i.Screenshots),
+			&i.Description,
+			&i.IconPath,
+			&i.PackagePath,
+			&i.ExtractedPath,
+			&i.Runnable,
+			&i.Restricted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getH5PLibraryFullDependencyTree = `-- name: GetH5PLibraryFullDependencyTree :many
 WITH RECURSIVE dep_tree AS (
     SELECT d.depends_on_id AS library_id, 0 AS depth

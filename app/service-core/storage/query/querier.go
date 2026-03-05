@@ -52,6 +52,11 @@ type Querier interface {
 	GetH5PLibraryByMachineNameMajorMinor(ctx context.Context, arg GetH5PLibraryByMachineNameMajorMinorParams) (H5pLibrary, error)
 	GetH5PLibraryByMachineNameVersion(ctx context.Context, arg GetH5PLibraryByMachineNameVersionParams) (H5pLibrary, error)
 	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]GetH5PLibraryDependenciesRow, error)
+	// Returns all transitive EDITOR dependencies ordered deepest-first (topological).
+	// Starts from 'editor' deps of the root library, then follows both 'editor' and
+	// 'preloaded' deps of those editor libraries (since editor libs can have preloaded deps).
+	// Used by the editor to load widget JS/CSS (e.g. H5PEditor.ShowWhen, H5PEditor.RangeList).
+	GetH5PLibraryEditorDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]H5pLibrary, error)
 	// Returns all transitive PRELOADED dependencies ordered deepest-first (topological).
 	// This ensures leaf dependencies (e.g. H5P.EventDispatcher) load before
 	// libraries that extend them (e.g. H5P.Question).

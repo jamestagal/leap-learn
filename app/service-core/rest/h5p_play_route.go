@@ -403,6 +403,34 @@ var embedTemplate = template.Must(template.New("h5p-embed").Parse(`<!doctype htm
     H5PIntegration = {{.IntegrationJSON}};
   </script>
   <script>
+    // Preload user state via synchronous XHR so it's available before H5P.init
+    // (H5P.init runs on document.ready and creates the instance immediately,
+    //  before the async getUserData AJAX call returns)
+    (function() {
+      var ajax = H5PIntegration.ajax;
+      if (!ajax || !ajax.contentUserData) return;
+      var url = ajax.contentUserData
+        .replace(':dataType', 'state')
+        .replace(':subContentId', '0');
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, false); // synchronous
+        xhr.send();
+        if (xhr.status === 200) {
+          var resp = JSON.parse(xhr.responseText);
+          if (resp.success && resp.data && resp.data !== false) {
+            var cid = H5PIntegration.contents['cid-1'];
+            if (cid) {
+              if (!cid.contentUserData) cid.contentUserData = {};
+              if (!cid.contentUserData['0']) cid.contentUserData['0'] = {};
+              cid.contentUserData['0']['state'] = resp.data;
+            }
+          }
+        }
+      } catch(e) { /* state preload failed, H5P will start fresh */ }
+    })();
+  </script>
+  <script>
     // Bridge: forward xAPI events and resize to parent frame
     (function() {
       // Resize observer — tell parent whenever body height changes

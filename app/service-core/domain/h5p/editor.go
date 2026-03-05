@@ -120,6 +120,40 @@ func (s *Service) GetEditorLibraryDetail(ctx context.Context, machineName string
 		slog.Debug("Error resolving dependencies", "library", machineName, "error", depErr)
 	}
 
+	// Resolve editor dependencies (e.g. H5PEditor.ShowWhen, H5PEditor.RangeList)
+	// These provide widget JS/CSS needed by the editor form
+	editorDeps, editorDepErr := s.store.GetH5PLibraryEditorDependencyTree(ctx, lib.ID)
+	if editorDepErr == nil && len(editorDeps) > 0 {
+		editorDepNames := make([]string, len(editorDeps))
+		for i, d := range editorDeps {
+			editorDepNames[i] = fmt.Sprintf("%s-%d.%d.%d", d.MachineName, d.MajorVersion, d.MinorVersion, d.PatchVersion)
+		}
+		slog.Info("Resolved editor dependency tree", "library", machineName, "count", len(editorDeps), "order", editorDepNames)
+		for _, dep := range editorDeps {
+			depVersion := fmt.Sprintf("%d.%d.%d", dep.MajorVersion, dep.MinorVersion, dep.PatchVersion)
+			depBase := path.Join("h5p-libraries", "extracted", dep.MachineName+"-"+depVersion)
+			depAssetBase := fmt.Sprintf("/api/h5p/libraries/%s-%s", dep.MachineName, depVersion)
+
+			depLibData, err := s.fileProvider.Download(ctx, depBase+"/library.json")
+			if err != nil {
+				slog.Debug("Skipping editor dependency assets", "dep", dep.MachineName, "error", err)
+				continue
+			}
+			var depLibJSON libraryJSONFull
+			if err := json.Unmarshal(depLibData, &depLibJSON); err != nil {
+				continue
+			}
+			for _, c := range depLibJSON.PreloadedCss {
+				css = append(css, depAssetBase+"/"+c.Path)
+			}
+			for _, j := range depLibJSON.PreloadedJs {
+				js = append(js, depAssetBase+"/"+j.Path)
+			}
+		}
+	} else if editorDepErr != nil {
+		slog.Debug("Error resolving editor dependencies", "library", machineName, "error", editorDepErr)
+	}
+
 	// Add the main library's CSS/JS after dependencies
 	assetBase := fmt.Sprintf("/api/h5p/libraries/%s-%s", machineName, version)
 	for _, c := range libJSON.PreloadedCss {

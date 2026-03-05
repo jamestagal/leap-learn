@@ -123,6 +123,9 @@ type Config struct {
 
 	// H5P
 	H5PHubURL string
+
+	// H5P State Save (DO flush)
+	StateServiceToken string
 }
 
 func LoadConfig() *Config {
@@ -202,6 +205,7 @@ func LoadConfig() *Config {
 		AzblobAccountName:            MustSetEnv(os.Getenv("FILE_PROVIDER") == "azblob", "AZBLOB_ACCOUNT_NAME"),
 		AzblobAccountKey:             MustSetEnv(os.Getenv("FILE_PROVIDER") == "azblob", "AZBLOB_ACCOUNT_KEY"),
 		H5PHubURL:                    os.Getenv("H5P_HUB_URL"), // defaults to https://hub-api.h5p.org in service
+		StateServiceToken:            os.Getenv("STATE_SERVICE_TOKEN"),
 	}
 }
 
@@ -277,5 +281,6 @@ func LoadTestConfig() *Config {
 		AzblobAccountName:            "azblob_account_name",
 		AzblobAccountKey:             "azblob_account_key",
 		H5PHubURL:                    "https://hub-api.h5p.org",
+		StateServiceToken:            "test-state-service-token",
 	}
 }

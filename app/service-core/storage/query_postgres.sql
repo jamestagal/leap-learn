@@ -232,6 +232,33 @@ FROM dep_max_depth dmd
 JOIN h5p_libraries l ON l.id = dmd.library_id
 ORDER BY dmd.max_depth DESC;
 
+-- name: GetH5PLibraryEditorDependencyTree :many
+-- Returns all transitive EDITOR dependencies ordered deepest-first (topological).
+-- Starts from 'editor' deps of the root library, then follows both 'editor' and
+-- 'preloaded' deps of those editor libraries (since editor libs can have preloaded deps).
+-- Used by the editor to load widget JS/CSS (e.g. H5PEditor.ShowWhen, H5PEditor.RangeList).
+WITH RECURSIVE dep_tree AS (
+    SELECT d.depends_on_id AS library_id, 0 AS depth
+    FROM h5p_library_dependencies d
+    WHERE d.library_id = $1
+      AND d.dependency_type = 'editor'
+    UNION
+    SELECT d.depends_on_id, dt.depth + 1
+    FROM h5p_library_dependencies d
+    JOIN dep_tree dt ON dt.library_id = d.library_id
+    WHERE dt.depth < 20
+      AND d.dependency_type IN ('preloaded', 'editor')
+),
+dep_max_depth AS (
+    SELECT library_id, MAX(depth) AS max_depth
+    FROM dep_tree
+    GROUP BY library_id
+)
+SELECT l.*
+FROM dep_max_depth dmd
+JOIN h5p_libraries l ON l.id = dmd.library_id
+ORDER BY dmd.max_depth DESC;
+
 -- =============================================================================
 -- H5P Hub Cache
 -- =============================================================================

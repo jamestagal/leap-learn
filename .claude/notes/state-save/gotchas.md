@@ -58,3 +58,46 @@ Format: `{subContentId: {dataType: "JSON string"}}`. Using an array breaks prelo
 ## Sub-Content IDs
 
 For simple content types (MultiChoice, True/False), `subContentId` is always `"0"`. For compound types (Course Presentation, Interactive Video, Column), each sub-content has its own ID. The table must handle both — the unique constraint includes `sub_content_id`.
+
+---
+
+## Phase 4: Durable Object (DO) State Save
+
+### JWT in Worker
+- LeapLearn JWTs use **EdDSA (Ed25519)**, NOT RS256
+- User ID is in `payload.id`, NOT `payload.sub` — matches `AccessTokenClaims` in `app/pkg/auth/auth.go`
+- Worker caches `CryptoKey` in module-level variable (survives across requests, cleared on redeploy)
+
+### DO Design
+- Identity: `idFromName(\`${userId}:${contentId}\`)` — one DO per user per content
+- `ctx.storage.put()` on every write — ensures state survives DO eviction
+- Alarm at 30s intervals batches rapid saves into one flush
+- Exponential backoff on flush failure: 30s → 60s → 120s → 240s → 300s max
+- `retryCount` is instance-level (not persisted) — resets on DO eviction, which is fine since a fresh instance re-reads from storage
+
+### Feature Flag (`STATE_SAVE_TARGET`)
+- `go` (default): All traffic to Go — no regression risk
+- `shadow`: GETs from Go, POSTs to Go + Worker in parallel — validates Worker without user impact
+- `worker`: Full cutover — Go receives data only via alarm flush
+- Shadow mode catches Worker errors silently — never fails the primary write
+
+### Service Token Auth (DO → Go flush)
+- `X-Api-Key` + `X-User-Id` headers used for DO → Go flush calls
+- Follows `task_route.go` pattern exactly
+- Skips org membership check — JWT was already verified at Worker, org membership checked at embed page load
+- `StateServiceToken` is optional in config — empty string = feature disabled
+
+### SvelteKit Proxy
+- Dedicated route at `api/h5p/content-user-data/[...path]/` takes precedence over catch-all `api/h5p/[...path]/`
+- Must read body as text once for shadow mode (can't stream to two targets)
+- `access_token` cookie → `Authorization: Bearer` header forwarding (same as catch-all)
+
+### CORS
+- `X-Api-Key` and `X-User-Id` added to allowed headers defensively
+- DO alarm fetch is server-side (Workers runtime) — doesn't trigger browser CORS
+
+### Worker Secrets: PUBLIC_KEY_PEM Must Be Piped from File
+- `wrangler secret put PUBLIC_KEY_PEM` with manual paste **mangles the PEM** — multi-line keys lose newlines or get extra whitespace
+- Always pipe from the actual key file: `cat ../../app/service-core/public.pem | npx wrangler secret put PUBLIC_KEY_PEM`
+- Symptom of a broken key: Worker returns **401 Unauthorized** on every request, DO stays empty, `verifyJWT` catches the `importSPKI` error silently and returns `null`
+- After fixing the secret, you must restart `wrangler dev` for the new secret to take effect

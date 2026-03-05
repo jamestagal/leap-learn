@@ -35,6 +35,31 @@ func (h *Handler) handleContentUserData(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	ctx := r.Context()
+	store := query.New(h.storage.Conn)
+
+	// Check for internal service token first (DO flush calls)
+	if apiKey := r.Header.Get("X-Api-Key"); apiKey != "" && h.cfg.StateServiceToken != "" && apiKey == h.cfg.StateServiceToken {
+		userIdStr := r.Header.Get("X-User-Id")
+		userID, err := uuid.Parse(userIdStr)
+		if err != nil {
+			writeResponse(h.cfg, w, r, nil, pkg.BadRequestError{Message: "X-User-Id required"})
+			return
+		}
+		// Service token auth: skip org membership check (the DO already received
+		// a request from an authenticated user whose org membership was verified
+		// when the embed page was served)
+		switch r.Method {
+		case http.MethodGet:
+			h.handleGetContentUserData(w, r, store, userID, contentID, dataType, subContentId)
+		case http.MethodPost:
+			h.handleSetContentUserData(w, r, store, userID, contentID, dataType, subContentId)
+		default:
+			writeResponse(h.cfg, w, r, nil, pkg.BadRequestError{Message: "Method not allowed"})
+		}
+		return
+	}
+
 	// Auth: extract token → validate → check org membership
 	token := extractAccessToken(r)
 	if token == "" {
@@ -46,9 +71,6 @@ func (h *Handler) handleContentUserData(w http.ResponseWriter, r *http.Request) 
 		writeResponse(h.cfg, w, r, nil, pkg.UnauthorizedError{Err: errors.New("invalid access token")})
 		return
 	}
-
-	ctx := r.Context()
-	store := query.New(h.storage.Conn)
 
 	// Verify content exists
 	content, err := store.GetH5PContentOrgId(ctx, contentID)

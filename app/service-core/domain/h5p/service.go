@@ -55,8 +55,9 @@ type store interface {
 	// Library metadata update
 	UpdateH5PLibraryMetadataJson(ctx context.Context, arg query.UpdateH5PLibraryMetadataJsonParams) error
 
-	// Dependency tree (used by editor)
+	// Dependency tree (used by editor and player)
 	GetH5PLibraryFullDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]query.H5pLibrary, error)
+	GetH5PLibraryEditorDependencyTree(ctx context.Context, libraryID uuid.UUID) ([]query.H5pLibrary, error)
 	GetH5PLibraryDependencies(ctx context.Context, libraryID uuid.UUID) ([]query.GetH5PLibraryDependenciesRow, error)
 }
 
